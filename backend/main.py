@@ -121,6 +121,8 @@ async def upload_video(
         error_str = str(e).lower()
         if "429" in error_str or "quota" in error_str or "exhausted" in error_str:
             raise HTTPException(status_code=429, detail="API Quota Exceeded! Your Gemini API key has run out of its free usage limit. Please click 'Get Key Here' above to generate a new FREE API key, paste it into the box, and try again.")
+        if "400" in error_str or "api_key_invalid" in error_str or "api key not valid" in error_str:
+            raise HTTPException(status_code=400, detail="Invalid API Key! Please double-check that you copied the key correctly from Google AI Studio without any extra spaces or missing characters.")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         # Guaranteed cleanup regardless of success or failure
@@ -258,6 +260,8 @@ async def process_link(
         error_str = str(e).lower()
         if "429" in error_str or "quota" in error_str or "exhausted" in error_str:
             raise HTTPException(status_code=429, detail="API Quota Exceeded! Your Gemini API key has run out of its free usage limit. Please click 'Get Key Here' above to generate a new FREE API key, paste it into the box, and try again.")
+        if "400" in error_str or "api_key_invalid" in error_str or "api key not valid" in error_str:
+            raise HTTPException(status_code=400, detail="Invalid API Key! Please double-check that you copied the key correctly from Google AI Studio without any extra spaces or missing characters.")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/download/{task_id}/{doc_type}")
