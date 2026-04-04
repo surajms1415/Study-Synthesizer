@@ -19,8 +19,8 @@ app = FastAPI(title="Video Insight Extractor API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=["*"], # Allow Vercel frontend to talk to Render backend
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
