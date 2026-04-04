@@ -53,21 +53,31 @@ def analyze_video_content(audio_path: str = None, frame_paths: list[str] = None,
     You are an expert tutor and examination preparer. 
     I have provided you with a video's audio track, keyframes (images) from the video, and possibly supplementary documents (PDFs, PPTs, Word, etc.). 
     The primary goal is NOT to just blindly transcribe or document everything in these files. Instead, you must scan the materials and INTELLIGENTLY EXTRACT ONLY THE MOST IMPORTANT core topics.
+    
+    CRITICAL RESTRICTION: You MUST NOT extract extra points from outside sources. Base everything STRICTLY on the provided content. Extract ONLY text form points. DO NOT output complex logic symbols, raw programming code, or unreadable formats. Everything must be highly readable and in an exam-ready text format.
     {topic_instruction}
     
-    Your task is to synthesize this multimodal information into four distinct, highly-structured examination-prep sections.
+    Your task is to synthesize this multimodal information into five distinct, highly-structured examination-prep sections.
     
     IMPORTANT MUST-FOLLOW INSTRUCTIONS FOR OUTPUT FORMAT:
-    You must output your response EXACTLY in four sections separated by the following identical marker lines:
+    You must output your response EXACTLY in five sections separated by the following identical marker lines:
     
     ===DETAILED_NOTES===
     [Intelligently extracted, elaborate explanations of IMPORTANT topics only]
-    Do NOT include mundane details or everything from the files. Identify only the key concepts and provide thorough, detailed, and clear explanations strictly for these important topics.
-    Structure your notes perfectly using Markdown: use clear # Headings, bullet points, bold text for emphasis, and proper code blocks if needed.
+    Do NOT include mundane details or everything from the files. Identify only the key concepts and provide thorough, detailed, and clear explanations strictly for these important topics using exam-ready text.
+    Structure your notes perfectly using Markdown: use clear # Headings, bullet points, and bold text for emphasis. Do NOT use code blocks unless strictly necessary for context.
     
     ===ONE_LINE_POINTS===
     [Extract strictly the most important 1-line points from the content as a markdown bulleted list]
     Limit each point to a single concise sentence. Focus only on the absolute most valuable takeaways for a quick review.
+    
+    ===DEFINITIONS===
+    [Extract all the important terminology, keywords, and their definitions]
+    Present this strictly as a markdown bulleted list. Each term MUST be on its own line, starting with a dash, bolded term, and a clear explanation.
+    Example:
+    - **Term 1**: Definition 1
+    
+    - **Term 2**: Definition 2
     
     ===QUIZ===
     [Generate exactly 5-10 highly relevant MCQs focused strictly on the important topics]
@@ -100,6 +110,7 @@ def analyze_video_content(audio_path: str = None, frame_paths: list[str] = None,
     # Parse the response using the delimiters
     detailed_notes = "Error generating notes."
     one_line_points = "Error generating one-line points."
+    definitions = "Error generating definitions."
     quiz = "Error generating quiz."
     flashcards = []
     
@@ -111,21 +122,28 @@ def analyze_video_content(audio_path: str = None, frame_paths: list[str] = None,
             if len(sub_parts) > 1:
                 detailed_notes = sub_parts[0].strip()
                 rest2 = sub_parts[1]
-                quiz_parts = rest2.split("===QUIZ===")
-                if len(quiz_parts) > 1:
-                    one_line_points = quiz_parts[0].strip()
-                    rest3 = quiz_parts[1]
-                    flash_parts = rest3.split("===FLASHCARDS===")
-                    if len(flash_parts) > 1:
-                        quiz = flash_parts[0].strip()
-                        raw_json = flash_parts[1].strip()
-                        raw_json = raw_json.replace("```json", "").replace("```", "").strip()
-                        try:
-                            flashcards = json.loads(raw_json)
-                        except json.JSONDecodeError:
-                            print("Warning: Failed to parse flashcards JSON")
+                def_parts = rest2.split("===DEFINITIONS===")
+                
+                if len(def_parts) > 1:
+                    one_line_points = def_parts[0].strip()
+                    rest3 = def_parts[1]
+                    quiz_parts = rest3.split("===QUIZ===")
+                    if len(quiz_parts) > 1:
+                        definitions = quiz_parts[0].strip()
+                        rest4 = quiz_parts[1]
+                        flash_parts = rest4.split("===FLASHCARDS===")
+                        if len(flash_parts) > 1:
+                            quiz = flash_parts[0].strip()
+                            raw_json = flash_parts[1].strip()
+                            raw_json = raw_json.replace("```json", "").replace("```", "").strip()
+                            try:
+                                flashcards = json.loads(raw_json)
+                            except json.JSONDecodeError:
+                                print("Warning: Failed to parse flashcards JSON")
+                        else:
+                            quiz = rest4.strip()
                     else:
-                        quiz = rest3.strip()
+                        definitions = rest3.strip()
                 else:
                     one_line_points = rest2.strip()
             else:
@@ -140,6 +158,7 @@ def analyze_video_content(audio_path: str = None, frame_paths: list[str] = None,
     return {
         "detailed_notes": detailed_notes,
         "one_line_points": one_line_points,
+        "definitions": definitions,
         "quiz": quiz,
         "flashcards": flashcards
     }

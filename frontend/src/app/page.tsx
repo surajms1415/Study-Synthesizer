@@ -6,24 +6,23 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export default function Home() {
-  const [mode, setMode] = useState<"file" | "link" | "web">("file");
-  const [file, setFile] = useState<File | null>(null);
+  const [mode, setMode] = useState<"file" | "link">("file");
   const [docs, setDocs] = useState<File[]>([]);
   const [url, setUrl] = useState("");
-  const [webUrl, setWebUrl] = useState("");
   const [focusTopic, setFocusTopic] = useState("");
   
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ 
     detailed_notes?: string; 
     one_line_points?: string; 
+    definitions?: string;
     quiz?: string; 
     flashcards?: {q: string, a: string}[];
     task_id?: string;
-    docx_urls?: { detailed?: string; points?: string; quiz?: string; } 
+    docx_urls?: { detailed?: string; points?: string; definitions?: string; quiz?: string; } 
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"detailed" | "points" | "quiz" | "flashcards">("detailed");
+  const [activeTab, setActiveTab] = useState<"detailed" | "points" | "definitions" | "quiz" | "flashcards">("detailed");
   
   const [userApiKey, setUserApiKey] = useState("");
   
@@ -45,9 +44,7 @@ export default function Home() {
   const [flashcardIndex, setFlashcardIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   
-  const [chatMessage, setChatMessage] = useState("");
-  const [chatHistory, setChatHistory] = useState<{role: string, text: string}[]>([]);
-  const [chatLoading, setChatLoading] = useState(false);
+
 
   const [isDarkMode, setIsDarkMode] = useState(true);
 
@@ -73,23 +70,17 @@ export default function Home() {
   };
 
   const handleUpload = async () => {
-    if (!file && docs.length === 0 && !webUrl) return;
+    if (docs.length === 0) return;
     setLoading(true);
     setError(null);
     setResult(null);
 
     const formData = new FormData();
-    if (file) {
-      formData.append("file", file);
-    }
     docs.forEach(doc => {
       formData.append("docs", doc);
     });
     if (focusTopic.trim()) {
       formData.append("focus_topic", focusTopic.trim());
-    }
-    if (webUrl.trim()) {
-      formData.append("web_url", webUrl.trim());
     }
     if (userApiKey.trim()) {
       formData.append("api_key", userApiKey.trim());
@@ -102,19 +93,27 @@ export default function Home() {
         body: formData,
       });
 
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errText = await res.text();
+        let errMsg = errText;
+        try { 
+          const errObj = JSON.parse(errText); 
+          if (errObj.detail) errMsg = errObj.detail;
+        } catch (e) {}
+        throw new Error(errMsg);
+      }
       const data = await res.json();
       setResult(data);
       setActiveTab("detailed");
     } catch (err: any) {
-      setError(err.message || "Failed to upload and process video.");
+      setError(err.message || "Failed to upload and process document notes.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleLinkProcess = async () => {
-    if (!url && docs.length === 0 && !webUrl) return;
+    if (!url && docs.length === 0) return;
     setLoading(true);
     setError(null);
     setResult(null);
@@ -129,9 +128,6 @@ export default function Home() {
     if (focusTopic.trim()) {
       formData.append("focus_topic", focusTopic.trim());
     }
-    if (webUrl.trim()) {
-      formData.append("web_url", webUrl.trim());
-    }
     if (userApiKey.trim()) {
       formData.append("api_key", userApiKey.trim());
     }
@@ -143,7 +139,15 @@ export default function Home() {
         body: formData,
       });
 
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errText = await res.text();
+        let errMsg = errText;
+        try { 
+          const errObj = JSON.parse(errText); 
+          if (errObj.detail) errMsg = errObj.detail;
+        } catch (e) {}
+        throw new Error(errMsg);
+      }
       const data = await res.json();
       setResult(data);
       setActiveTab("detailed");
@@ -154,37 +158,7 @@ export default function Home() {
     }
   };
 
-  const handleChatSubmit = async () => {
-    if (!chatMessage.trim() || !result?.task_id) return;
-    
-    const newMessage = { role: "user", text: chatMessage };
-    setChatHistory(prev => [...prev, newMessage]);
-    setChatMessage("");
-    setChatLoading(true);
-    
-    try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const res = await fetch(`${API_BASE_URL}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          task_id: result.task_id,
-          message: newMessage.text,
-          history: chatHistory,
-          api_key: userApiKey.trim() || undefined
-        })
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        setChatHistory(prev => [...prev, { role: "ai", text: data.response }]);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setChatLoading(false);
-    }
-  };
+
 
   return (
     <main className={`min-h-screen ${appBg} p-8 md:p-16 selection:bg-indigo-500/30 relative overflow-hidden font-sans transition-colors duration-500`}>
@@ -258,7 +232,7 @@ export default function Home() {
                     className={`flex-1 flex items-center justify-center py-3 text-sm font-medium rounded-lg transition-all ${mode === "file" ? (isDarkMode ? "bg-white/10 text-white shadow-lg border border-white/10" : "bg-white text-indigo-600 shadow-md border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
                   >
                     <UploadCloud className="w-4 h-4 mr-2" />
-                    Upload File
+                    Upload Notes
                   </button>
                   <button
                     onClick={() => setMode("link")}
@@ -267,40 +241,11 @@ export default function Home() {
                     <LinkIcon className="w-4 h-4 mr-2" />
                     Paste Link
                   </button>
-                  <button
-                    onClick={() => setMode("web")}
-                    className={`flex-1 flex items-center justify-center py-3 text-sm font-medium rounded-lg transition-all ${mode === "web" ? (isDarkMode ? "bg-white/10 text-white shadow-lg border border-white/10" : "bg-white text-indigo-600 shadow-md border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
-                  >
-                    <FileText className="w-4 h-4 mr-2" />
-                    Web Article
-                  </button>
                 </div>
 
                 <div className="space-y-6">
                   {/* PRIMARY MEDIA INPUT */}
-                  {mode === "file" ? (
-                    <div 
-                      className={`rounded-2xl p-10 text-center transition-all cursor-pointer group ${uploadAreaBg}`}
-                      onClick={() => document.getElementById('file-upload')?.click()}
-                    >
-                      <input 
-                        id="file-upload" 
-                        type="file" 
-                        accept="video/*" 
-                        className="hidden" 
-                        onChange={(e) => setFile(e.target.files?.[0] || null)}
-                      />
-                      <Video className={`w-12 h-12 mx-auto transition-transform duration-300 group-hover:scale-110 mb-4 ${isDarkMode ? 'text-neutral-500 group-hover:text-indigo-400' : 'text-slate-400 group-hover:text-indigo-500'}`} />
-                      {file ? (
-                        <div className="space-y-1">
-                          <p className={`text-lg font-medium ${isDarkMode ? 'text-indigo-300' : 'text-indigo-600'}`}>{file.name}</p>
-                          <p className={`text-sm ${mutedText}`}>Primary Video Selected</p>
-                        </div>
-                      ) : (
-                        <p className={`text-base font-medium ${mutedText}`}>Click to select primary video (Optional)</p>
-                      )}
-                    </div>
-                  ) : mode === "link" ? (
+                  {mode === "link" && (
                     <div className="space-y-2 group">
                       <label className={`text-sm font-medium ml-1 transition-colors ${isDarkMode ? 'text-neutral-300 group-focus-within:text-indigo-400' : 'text-slate-600 group-focus-within:text-indigo-600'}`}>Video YouTube/Direct Link (Optional)</label>
                       <input 
@@ -308,17 +253,6 @@ export default function Home() {
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
                         placeholder="e.g. https://www.youtube.com/watch?v=..."
-                        className={`w-full rounded-xl px-4 py-4 outline-none transition-all shadow-inner hover:shadow-md ${inputBg}`}
-                      />
-                    </div>
-                  ) : (
-                    <div className="space-y-2 group">
-                      <label className={`text-sm font-medium ml-1 transition-colors ${isDarkMode ? 'text-neutral-300 group-focus-within:text-indigo-400' : 'text-slate-600 group-focus-within:text-indigo-600'}`}>Web Article URL</label>
-                      <input 
-                        type="url"
-                        value={webUrl}
-                        onChange={(e) => setWebUrl(e.target.value)}
-                        placeholder="e.g. https://en.wikipedia.org/wiki/..."
                         className={`w-full rounded-xl px-4 py-4 outline-none transition-all shadow-inner hover:shadow-md ${inputBg}`}
                       />
                     </div>
@@ -374,8 +308,8 @@ export default function Home() {
                   </div>
 
                   <button
-                    disabled={(!file && docs.length === 0 && !webUrl && !url) || loading}
-                    onClick={mode === "file" ? handleUpload : mode === "link" ? handleLinkProcess : handleUpload}
+                    disabled={(docs.length === 0 && !url) || loading}
+                    onClick={mode === "file" ? handleUpload : handleLinkProcess}
                     className="w-full py-4 mt-8 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white text-lg font-bold rounded-xl focus:ring-4 focus:ring-indigo-500/30 transition-all duration-300 disabled:opacity-50 disabled:scale-100 hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-indigo-500/40"
                   >
                     {loading ? (
@@ -427,65 +361,75 @@ export default function Home() {
                 <p className={`text-sm leading-relaxed ${mutedText}`}>Grinds rote memorization by generating smart 3D-flipping flashcard decks straight from the core concepts.</p>
               </div>
 
-              <div className={`p-6 rounded-3xl transition-all shadow-lg hover:-translate-y-1 ${cardBg}`}>
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${isDarkMode ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-600'}`}>
-                  <MessageSquare className="w-6 h-6" />
-                </div>
-                <h3 className={`text-xl font-bold mb-2 ${primaryText}`}>Study Buddy AI</h3>
-                <p className={`text-sm leading-relaxed ${mutedText}`}>Ask endless follow-up questions to an embedded conversational chatbot uniquely aware of your entire topic.</p>
-              </div>
+
             </div>
 
           </div>
         ) : (
-          <div className="space-y-8 animate-in fade-in duration-700 slide-in-from-bottom-8 w-full max-w-5xl mx-auto">
-            <div className={`flex flex-col xl:flex-row items-center justify-between backdrop-blur-lg p-5 md:p-6 rounded-2xl border gap-4 transition-all hover:shadow-2xl ${cardBg}`}>
-              <div className={`flex items-center space-x-3 pl-2 ${isDarkMode ? 'text-emerald-400' : 'text-emerald-500'}`}>
-                <CheckCircle2 className="w-8 h-8 drop-shadow-md" />
-                <h2 className={`text-xl font-bold hidden md:block ${primaryText}`}>Analysis Complete</h2>
-              </div>
+          <div className="space-y-4 animate-in fade-in duration-700 slide-in-from-bottom-8 w-full max-w-5xl mx-auto">
+            
+            {/* Top Left Back Button */}
+            <div className="flex justify-start">
+              <button 
+                onClick={() => { setResult(null); setUrl(""); setDocs([]); setFocusTopic(""); }}
+                className={`inline-flex items-center px-4 py-2 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 shadow-md border text-sm ${isDarkMode ? 'text-indigo-300 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30' : 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-indigo-200'}`}
+              >
+                ← Upload Another File
+              </button>
+            </div>
 
-              {/* Tab Navigation */}
-              <div className={`flex rounded-xl p-1.5 w-full md:w-auto overflow-x-auto shrink-0 shadow-inner ${isDarkMode ? 'bg-black/40 border border-white/5' : 'bg-slate-100 border border-slate-200'}`}>
-                <button
-                  onClick={() => setActiveTab("detailed")}
-                  className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "detailed" ? (isDarkMode ? "bg-white/10 text-indigo-300 shadow-md border border-white/5" : "bg-white text-indigo-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
-                >
-                  Deep Dive Notes
-                </button>
-                <button
-                  onClick={() => setActiveTab("points")}
-                  className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "points" ? (isDarkMode ? "bg-white/10 text-emerald-300 shadow-md border border-white/5" : "bg-white text-emerald-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
-                >
-                  1-Line Highlights
-                </button>
-                <button
-                  onClick={() => setActiveTab("quiz")}
-                  className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "quiz" ? (isDarkMode ? "bg-white/10 text-purple-300 shadow-md border border-white/5" : "bg-white text-purple-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
-                >
-                  Mastery Quiz
-                </button>
-                {result.flashcards && result.flashcards.length > 0 && (
+            <div className={`backdrop-blur-lg p-2 rounded-2xl border transition-all hover:shadow-2xl ${cardBg}`}>
+              
+              {/* Tab Navigation & Export Fit within Parent */}
+              <div className={`flex flex-col xl:flex-row rounded-xl p-1.5 w-full items-center justify-between gap-3 shadow-inner ${isDarkMode ? 'bg-black/40 border border-white/5' : 'bg-slate-100 border border-slate-200'}`}>
+                <div className="flex flex-wrap items-center justify-center gap-1 w-full xl:w-auto">
                   <button
-                    onClick={() => { setActiveTab("flashcards"); setFlashcardIndex(0); setShowAnswer(false); }}
-                    className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "flashcards" ? (isDarkMode ? "bg-white/10 text-yellow-300 shadow-md border border-white/5" : "bg-white text-amber-600 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
+                    onClick={() => setActiveTab("detailed")}
+                    className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "detailed" ? (isDarkMode ? "bg-white/10 text-indigo-300 shadow-md border border-white/5" : "bg-white text-indigo-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
                   >
-                    Flashcards
+                    Deep Dive Notes
                   </button>
-                )}
-              </div>
+                  <button
+                    onClick={() => setActiveTab("definitions")}
+                    className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "definitions" ? (isDarkMode ? "bg-white/10 text-teal-300 shadow-md border border-white/5" : "bg-white text-teal-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
+                  >
+                    Definitions
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("points")}
+                    className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "points" ? (isDarkMode ? "bg-white/10 text-emerald-300 shadow-md border border-white/5" : "bg-white text-emerald-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
+                  >
+                    1-Line Highlights
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("quiz")}
+                    className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "quiz" ? (isDarkMode ? "bg-white/10 text-purple-300 shadow-md border border-white/5" : "bg-white text-purple-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
+                  >
+                    Mastery Quiz
+                  </button>
+                  {result.flashcards && result.flashcards.length > 0 && (
+                    <button
+                      onClick={() => { setActiveTab("flashcards"); setFlashcardIndex(0); setShowAnswer(false); }}
+                      className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "flashcards" ? (isDarkMode ? "bg-white/10 text-yellow-300 shadow-md border border-white/5" : "bg-white text-amber-600 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
+                    >
+                      Flashcards
+                    </button>
+                  )}
+                </div>
 
-              {/* Download Option Based on Tab */}
-              {result.docx_urls && activeTab !== "flashcards" && result.docx_urls[activeTab] && (
-                <a 
-                  href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${result.docx_urls[activeTab]}`}
-                  download
-                  className={`flex items-center justify-center space-x-2 px-6 py-2.5 rounded-xl font-medium transition-all duration-300 w-full md:w-auto whitespace-nowrap shrink-0 border shadow-lg hover:scale-105 hover:-translate-y-1 ${isDarkMode ? 'bg-white/10 border-white/20 hover:bg-white/20 text-white' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'}`}
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Export .docx</span>
-                </a>
-              )}
+                <div className="shrink-0 flex pr-1">
+                  {result.docx_urls && activeTab !== "flashcards" && result.docx_urls[activeTab] && (
+                    <a 
+                      href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${result.docx_urls[activeTab]}`}
+                      download
+                      className={`flex items-center justify-center space-x-2 px-5 py-2 rounded-lg text-sm font-bold transition-all duration-300 whitespace-nowrap border shadow-md hover:scale-105 ${isDarkMode ? 'bg-white/10 border-white/20 hover:bg-white/20 text-white' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'}`}
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Export .docx</span>
+                    </a>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className={`backdrop-blur-xl rounded-3xl p-8 md:p-12 max-w-none transition-all ${cardBg}`}>
@@ -553,75 +497,13 @@ export default function Home() {
                       }
                     }}
                   >
-                    {activeTab === "detailed" ? (result.detailed_notes || "") : activeTab === "points" ? (result.one_line_points || "") : (result.quiz || "")}
+                    {activeTab === "detailed" ? (result.detailed_notes || "") : activeTab === "definitions" ? (result.definitions || "") : activeTab === "points" ? (result.one_line_points || "") : (result.quiz || "")}
                   </ReactMarkdown>
                 </div>
               )}
             </div>
             
-            {/* STUDY BUDDY CHAT */}
-            <div className={`rounded-3xl p-6 md:p-8 mt-8 transition-all hover:shadow-2xl ${isDarkMode ? 'bg-black/30 border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]' : 'bg-white/80 border border-slate-200 shadow-xl shadow-slate-200/50'}`}>
-              <h3 className={`text-xl font-bold mb-6 flex items-center ${isDarkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>
-                <span className="text-2xl mr-3 drop-shadow-md">🤖</span> 
-                Study Buddy Chat
-              </h3>
-              
-              <div className="space-y-5 mb-6 max-h-[450px] overflow-y-auto pr-3 rounded-xl scroll-smooth">
-                {chatHistory.length === 0 ? (
-                  <div className={`text-center py-10 rounded-2xl border flex flex-col items-center justify-center ${isDarkMode ? 'bg-white/5 border-white/5 text-neutral-400' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
-                    <div className="w-16 h-16 bg-indigo-500/10 rounded-full flex items-center justify-center mb-4 text-2xl">✨</div>
-                    <p className="text-lg font-medium">Ask me anything about these notes!</p>
-                    <p className="text-sm opacity-70 mt-2">I have full context of all the extracted concepts.</p>
-                  </div>
-                ) : (
-                  chatHistory.map((msg, i) => (
-                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
-                      <div className={`max-w-[85%] rounded-3xl px-6 py-4 text-[1.05rem] leading-relaxed shadow-md ${msg.role === 'user' ? (isDarkMode ? 'bg-indigo-600 border border-indigo-500/50 text-indigo-50 rounded-br-sm' : 'bg-indigo-500 border border-indigo-600 text-white rounded-br-sm') : (isDarkMode ? 'bg-white/10 border border-white/10 text-neutral-200 rounded-bl-sm backdrop-blur-md' : 'bg-white border border-slate-200 text-slate-700 rounded-bl-sm')}`}>
-                        <div className={`prose max-w-none prose-p:my-1 prose-pre:my-3 prose-sm ${isDarkMode ? 'prose-invert' : 'prose-slate'}`}>
-                          <ReactMarkdown>{msg.text}</ReactMarkdown>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-                {chatLoading && (
-                  <div className="flex justify-start">
-                    <div className={`rounded-3xl rounded-bl-sm px-6 py-4 text-sm flex items-center shadow-md animate-pulse ${isDarkMode ? 'bg-white/5 border border-white/10 text-neutral-400' : 'bg-white border border-slate-200 text-slate-500'}`}>
-                      <div className={`w-2 h-2 rounded-full mr-1.5 animate-bounce ${isDarkMode ? 'bg-indigo-400' : 'bg-indigo-500'}`} style={{animationDelay: "0ms"}}></div>
-                      <div className={`w-2 h-2 rounded-full mr-1.5 animate-bounce ${isDarkMode ? 'bg-indigo-400' : 'bg-indigo-500'}`} style={{animationDelay: "150ms"}}></div>
-                      <div className={`w-2 h-2 rounded-full animate-bounce ${isDarkMode ? 'bg-indigo-400' : 'bg-indigo-500'}`} style={{animationDelay: "300ms"}}></div>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <div className={`flex space-x-3 p-2.5 rounded-2xl border shadow-inner transition-colors focus-within:ring-2 focus-within:ring-indigo-500/30 ${isDarkMode ? 'bg-black/50 border-white/10' : 'bg-slate-50 border-slate-300'}`}>
-                <input 
-                  type="text" 
-                  value={chatMessage}
-                  onChange={e => setChatMessage(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleChatSubmit()}
-                  placeholder="Ask a question..."
-                  className={`flex-1 bg-transparent px-4 py-3 outline-none text-base font-medium ${isDarkMode ? 'text-white placeholder-neutral-500' : 'text-slate-900 placeholder-slate-400'}`}
-                />
-                <button 
-                  onClick={handleChatSubmit}
-                  disabled={!chatMessage.trim() || chatLoading}
-                  className="bg-indigo-600 hover:bg-indigo-500 hover:-translate-y-0.5 active:translate-y-0 text-white px-8 py-3 rounded-xl disabled:opacity-50 disabled:hover:translate-y-0 font-bold tracking-wide transition-all shadow-md flex items-center justify-center shrink-0"
-                >
-                  Send
-                </button>
-              </div>
-            </div>
-            
-            <div className="text-center pb-16 mt-16">
-              <button 
-                onClick={() => { setResult(null); setFile(null); setDocs([]); setUrl(""); setFocusTopic(""); }}
-                className={`inline-flex items-center px-8 py-4 rounded-full font-semibold transition-all hover:scale-105 active:scale-95 shadow-lg ${isDarkMode ? 'text-neutral-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10' : 'text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200'}`}
-              >
-                ← Synthesize Another Topic
-              </button>
-            </div>
+
           </div>
         )}
 

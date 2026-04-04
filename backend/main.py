@@ -95,32 +95,49 @@ async def upload_video(
         print("Generating DOCX files...")
         create_docx_from_markdown(ai_result["detailed_notes"], f"output/{task_id}_detailed.docx")
         create_docx_from_markdown(ai_result["one_line_points"], f"output/{task_id}_points.docx")
+        create_docx_from_markdown(ai_result.get("definitions", ""), f"output/{task_id}_definitions.docx")
         create_docx_from_markdown(ai_result["quiz"], f"output/{task_id}_quiz.docx")
         
-        # Save context for chat
-        with open(f"output/{task_id}_context.json", "w", encoding="utf-8") as f:
-            json.dump({
-                "detailed_notes": ai_result["detailed_notes"],
-                "one_line_points": ai_result["one_line_points"],
-            }, f)
+
         
         return {
             "status": "success",
             "task_id": task_id,
             "detailed_notes": ai_result["detailed_notes"],
             "one_line_points": ai_result["one_line_points"],
+            "definitions": ai_result.get("definitions", ""),
             "quiz": ai_result["quiz"],
             "flashcards": ai_result.get("flashcards", []),
             "docx_urls": {
                 "detailed": f"/api/download/{task_id}/detailed",
                 "points": f"/api/download/{task_id}/points",
+                "definitions": f"/api/download/{task_id}/definitions",
                 "quiz": f"/api/download/{task_id}/quiz"
             }
         }
         
     except Exception as e:
         print(f"Error during processing: {e}")
+        error_str = str(e).lower()
+        if "429" in error_str or "quota" in error_str or "exhausted" in error_str:
+            raise HTTPException(status_code=429, detail="API Quota Exceeded! Your Gemini API key has run out of its free usage limit. Please click 'Get Key Here' above to generate a new FREE API key, paste it into the box, and try again.")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Guaranteed cleanup regardless of success or failure
+        for path in doc_paths:
+            if os.path.exists(path):
+                try: os.remove(path)
+                except: pass
+        for path in frame_paths:
+            if os.path.exists(path):
+                try: os.remove(path)
+                except: pass
+        if temp_video_path and os.path.exists(temp_video_path):
+            try: os.remove(temp_video_path)
+            except: pass
+        if audio_path and os.path.exists(audio_path):
+            try: os.remove(audio_path)
+            except: pass
 
 class LinkRequest(BaseModel):
     url: str
@@ -216,36 +233,36 @@ async def process_link(
         print("Generating DOCX files...")
         create_docx_from_markdown(ai_result["detailed_notes"], f"output/{task_id}_detailed.docx")
         create_docx_from_markdown(ai_result["one_line_points"], f"output/{task_id}_points.docx")
+        create_docx_from_markdown(ai_result.get("definitions", ""), f"output/{task_id}_definitions.docx")
         create_docx_from_markdown(ai_result["quiz"], f"output/{task_id}_quiz.docx")
         
-        # Save context for chat
-        with open(f"output/{task_id}_context.json", "w", encoding="utf-8") as f:
-            json.dump({
-                "detailed_notes": ai_result["detailed_notes"],
-                "one_line_points": ai_result["one_line_points"],
-            }, f)
-        
+
         return {
             "status": "success",
             "task_id": task_id,
             "detailed_notes": ai_result["detailed_notes"],
             "one_line_points": ai_result["one_line_points"],
+            "definitions": ai_result.get("definitions", ""),
             "quiz": ai_result["quiz"],
             "flashcards": ai_result.get("flashcards", []),
             "docx_urls": {
                 "detailed": f"/api/download/{task_id}/detailed",
                 "points": f"/api/download/{task_id}/points",
+                "definitions": f"/api/download/{task_id}/definitions",
                 "quiz": f"/api/download/{task_id}/quiz"
             }
         }
         
     except Exception as e:
         print(f"Error during processing link: {e}")
+        error_str = str(e).lower()
+        if "429" in error_str or "quota" in error_str or "exhausted" in error_str:
+            raise HTTPException(status_code=429, detail="API Quota Exceeded! Your Gemini API key has run out of its free usage limit. Please click 'Get Key Here' above to generate a new FREE API key, paste it into the box, and try again.")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/download/{task_id}/{doc_type}")
 async def download_docx(task_id: str, doc_type: str):
-    valid_types = ["detailed", "points", "quiz"]
+    valid_types = ["detailed", "points", "definitions", "quiz"]
     if doc_type not in valid_types:
         raise HTTPException(status_code=400, detail="Invalid document type")
         
@@ -253,6 +270,7 @@ async def download_docx(task_id: str, doc_type: str):
     filenames = {
         "detailed": "detailed_notes.docx",
         "points": "1_line_highlights.docx",
+        "definitions": "definitions.docx",
         "quiz": "topic_quiz.docx"
     }
     
@@ -263,53 +281,4 @@ async def download_docx(task_id: str, doc_type: str):
             filename=filenames[doc_type]
         )
     raise HTTPException(status_code=404, detail="File not found")
-
-class ChatMessage(BaseModel):
-    role: str
-    text: str
-
-class ChatRequest(BaseModel):
-    task_id: str
-    message: str
-    history: list[ChatMessage] = []
-    api_key: Optional[str] = None
-
-@app.post("/api/chat")
-async def chat_with_docs(req: ChatRequest):
-    context_path = f"output/{req.task_id}_context.json"
-    if not os.path.exists(context_path):
-        raise HTTPException(status_code=404, detail="Study context not found or expired")
-        
-    with open(context_path, "r", encoding="utf-8") as f:
-        context_data = json.load(f)
-        
-    from google import genai
-    api_key_to_use = req.api_key or os.environ.get("GEMINI_API_KEY")
-    if not api_key_to_use or api_key_to_use == "your_gemini_api_key_here":
-        raise HTTPException(status_code=400, detail="Missing Gemini API Key in settings.")
-        
-    client = genai.Client(api_key=api_key_to_use)
-    
-    system_instruction = f"""
-    You are an expert Study Buddy AI. You are helping a student actively study their generated course notes.
-    Here are the core notes you previously generated:
-    {context_data.get('detailed_notes', '')}
-    
-    Answer the student's question clearly, enthusiastically, and factually based on the notes. Do not repeat the notes verbatim.
-    """
-    
-    chat_prompt = system_instruction + "\n\nChat History:\n"
-    for msg in req.history:
-        chat_prompt += f"{msg.role.upper()}: {msg.text}\n"
-    chat_prompt += f"USER: {req.message}\nSTUDY BUDDY:"
-    
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=chat_prompt
-        )
-        return {"response": response.text}
-    except Exception as e:
-        print(f"Chat error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
