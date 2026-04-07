@@ -2,6 +2,22 @@ from docx import Document
 from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import re
+import os
+
+def extract_text_from_pptx(file_path: str) -> str:
+    from pptx import Presentation
+    prs = Presentation(file_path)
+    text = []
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text"):
+                text.append(shape.text)
+    return "\n".join(text)
+
+def extract_text_from_docx(file_path: str) -> str:
+    doc = Document(file_path)
+    text = [p.text for p in doc.paragraphs if p.text.strip()]
+    return "\n".join(text)
 
 def add_formatted_text(paragraph, text):
     """Helper to add text with **bold** and `code` parsed properly to a paragraph."""
