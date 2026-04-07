@@ -5,11 +5,14 @@ from fastapi.responses import FileResponse
 import os
 import uuid
 import asyncio
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from services.audio_service import extract_audio
 from services.video_service import extract_frames
 from services.ai_service import analyze_video_content
-from services.doc_service import create_docx_from_markdown
+from services.doc_service import create_docx_from_markdown, extract_text_from_docx, extract_text_from_pptx
 from services.download_service import download_video_from_url
 from services.web_service import scrape_article
 from pydantic import BaseModel
@@ -63,7 +66,30 @@ async def upload_video(
             path = f"temp/{task_id}_doc_{d.filename}"
             with open(path, "wb") as buf:
                 buf.write(await d.read())
-            doc_paths.append(path)
+            
+            ext = os.path.splitext(d.filename)[1].lower()
+            if ext in ['.pptx', '.ppt']:
+                try:
+                    text_content = extract_text_from_pptx(path)
+                    text_path = path + ".txt"
+                    with open(text_path, "w", encoding="utf-8") as f:
+                        f.write(text_content)
+                    doc_paths.append(text_path)
+                except Exception as e:
+                    print(f"Failed to extract pptx text: {e}")
+                    doc_paths.append(path)
+            elif ext in ['.docx', '.doc']:
+                try:
+                    text_content = extract_text_from_docx(path)
+                    text_path = path + ".txt"
+                    with open(text_path, "w", encoding="utf-8") as f:
+                        f.write(text_content)
+                    doc_paths.append(text_path)
+                except Exception as e:
+                    print(f"Failed to extract docx text: {e}")
+                    doc_paths.append(path)
+            else:
+                doc_paths.append(path)
             
     if web_url:
         print(f"Scraping {web_url}...")
@@ -119,11 +145,17 @@ async def upload_video(
     except Exception as e:
         print(f"Error during processing: {e}")
         error_str = str(e).lower()
+        if "mime type" in error_str or "unsupported" in error_str:
+            raise HTTPException(status_code=400, detail="Unsupported File Type! Gemini doesn't support this document format (like .pptx or .docx directly without conversion). Please upload a PDF or .txt file instead.")
         if "429" in error_str or "quota" in error_str or "exhausted" in error_str:
             raise HTTPException(status_code=429, detail="API Quota Exceeded! Your Gemini API key has run out of its free usage limit. Please click 'Get Key Here' above to generate a new FREE API key, paste it into the box, and try again.")
-        if "400" in error_str or "api_key_invalid" in error_str or "api key not valid" in error_str:
+        if "api_key_invalid" in error_str or "api key not valid" in error_str:
             raise HTTPException(status_code=400, detail="Invalid API Key! Please double-check that you copied the key correctly from Google AI Studio without any extra spaces or missing characters.")
-        raise HTTPException(status_code=500, detail=str(e))
+        if "sign in to confirm" in error_str or "bot" in error_str:
+            raise HTTPException(status_code=400, detail="YouTube Anti-Bot Protection triggered! This specific video is blocked from being read by servers right now. Please try a different video link.")
+        
+        # Generic graceful fallback for any other obscure errors
+        raise HTTPException(status_code=500, detail="An unexpected system error occurred while processing the content. Please verify your files/link and try again.")
     finally:
         # Guaranteed cleanup regardless of success or failure
         for path in doc_paths:
@@ -160,19 +192,14 @@ async def process_link(
         audio_path = None
         frame_paths = []
         
-        # Step 0: Download from link
+        # Step 0: Extract YouTube transcript (if applicable) BEFORE downloading
+        audio_path = None
+        frame_paths = []
+        transcript_fetched = False
+        video_download_failed = False
+        temp_video_path = None
+        
         if url:
-            print(f"Downloading video from {url}...")
-            temp_video_path = download_video_from_url(url, "temp")
-            
-            # Verify the file was created
-            if not temp_video_path or not os.path.exists(temp_video_path):
-                raise HTTPException(status_code=400, detail="Failed to download video from the provided link.")
-                
-            # Step 1: Extract Audio or fetch Transcript directly (instant)
-            audio_path = None
-            transcript_fetched = False
-            
             try:
                 import re
                 from youtube_transcript_api import YouTubeTranscriptApi
@@ -194,11 +221,32 @@ async def process_link(
                     doc_paths.append(transcript_path)
                     transcript_fetched = True
                     print("Transcript fetched instantly! Skipping time-consuming MP3 audio rendering.")
-                else:
-                    raise Exception("Not a recognized YouTube ID")
             except Exception as e:
-                print(f"Could not fetch transcript (maybe no captions), falling back to MP3 extraction: {e}")
-                
+                print(f"Could not fetch transcript (maybe no captions or invalid ID): {e}")
+
+            # Step 1: Download from link
+            print(f"Downloading video from {url}...")
+            try:
+                temp_video_path = download_video_from_url(url, "temp")
+                if not temp_video_path or not os.path.exists(temp_video_path):
+                    raise ValueError("Failed to download video from the provided link.")
+            except Exception as e:
+                error_str = str(e).lower()
+                if "bot protection" in error_str or "bot" in error_str or "sign in to confirm" in error_str:
+                    print(f"YouTube limit encountered: {e}")
+                    video_download_failed = True
+                    if not transcript_fetched:
+                        # We have no text and no video
+                        raise HTTPException(status_code=400, detail="YouTube Anti-Bot Protection triggered! YouTube is blocking this video and no transcript is available. Please try a different link or manually upload the file.")
+                    else:
+                        print("Gracefully falling back: Video download was blocked but transcript is available. Proceeding without frames...")
+                else:
+                    video_download_failed = True
+                    if not transcript_fetched:
+                        raise HTTPException(status_code=400, detail=f"Failed to download video and no transcript was found: {str(e)}")
+                    print(f"Video download failed but continuing with transcript: {str(e)}")
+
+        if temp_video_path and not video_download_failed:
             if not transcript_fetched:
                 audio_path = f"temp/{task_id}_audio.mp3"
                 print("Extracting audio map (fallback)...")
@@ -208,7 +256,10 @@ async def process_link(
             frames_dir = f"temp/{task_id}_frames"
             print("Extracting frames...")
             # Get frame every 10 seconds
-            frame_paths = extract_frames(temp_video_path, frames_dir, interval_seconds=10)
+            try:
+                frame_paths = extract_frames(temp_video_path, frames_dir, interval_seconds=10)
+            except Exception as e:
+                print(f"Failed to extract frames: {e}")
             
         doc_paths = []
         for d in docs:
@@ -216,7 +267,30 @@ async def process_link(
                 path = f"temp/{task_id}_doc_{d.filename}"
                 with open(path, "wb") as buf:
                     buf.write(await d.read())
-                doc_paths.append(path)
+                
+                ext = os.path.splitext(d.filename)[1].lower()
+                if ext in ['.pptx', '.ppt']:
+                    try:
+                        text_content = extract_text_from_pptx(path)
+                        text_path = path + ".txt"
+                        with open(text_path, "w", encoding="utf-8") as f:
+                            f.write(text_content)
+                        doc_paths.append(text_path)
+                    except Exception as e:
+                        print(f"Failed to extract pptx text: {e}")
+                        doc_paths.append(path)
+                elif ext in ['.docx', '.doc']:
+                    try:
+                        text_content = extract_text_from_docx(path)
+                        text_path = path + ".txt"
+                        with open(text_path, "w", encoding="utf-8") as f:
+                            f.write(text_content)
+                        doc_paths.append(text_path)
+                    except Exception as e:
+                        print(f"Failed to extract docx text: {e}")
+                        doc_paths.append(path)
+                else:
+                    doc_paths.append(path)
                 
         if web_url:
             print(f"Scraping {web_url}...")
@@ -258,11 +332,17 @@ async def process_link(
     except Exception as e:
         print(f"Error during processing link: {e}")
         error_str = str(e).lower()
+        if "mime type" in error_str or "unsupported" in error_str:
+            raise HTTPException(status_code=400, detail="Unsupported File Type! Gemini doesn't support this document format (like .pptx or .docx directly without conversion). Please upload a PDF or .txt file instead.")
         if "429" in error_str or "quota" in error_str or "exhausted" in error_str:
             raise HTTPException(status_code=429, detail="API Quota Exceeded! Your Gemini API key has run out of its free usage limit. Please click 'Get Key Here' above to generate a new FREE API key, paste it into the box, and try again.")
-        if "400" in error_str or "api_key_invalid" in error_str or "api key not valid" in error_str:
+        if "api_key_invalid" in error_str or "api key not valid" in error_str:
             raise HTTPException(status_code=400, detail="Invalid API Key! Please double-check that you copied the key correctly from Google AI Studio without any extra spaces or missing characters.")
-        raise HTTPException(status_code=500, detail=str(e))
+        if "sign in to confirm" in error_str or "bot" in error_str:
+            raise HTTPException(status_code=400, detail="YouTube Anti-Bot Protection triggered! This specific video is blocked from being read by servers right now. Please try a different video link.")
+            
+        # Generic graceful fallback for any other obscure errors 
+        raise HTTPException(status_code=500, detail="An unexpected system error occurred while processing the content. Please verify your files/link and try again.")
 
 @app.get("/api/download/{task_id}/{doc_type}")
 async def download_docx(task_id: str, doc_type: str):
