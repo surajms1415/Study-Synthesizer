@@ -142,6 +142,8 @@ async def upload_video(
             }
         }
         
+    except HTTPException as he:
+        raise he
     except Exception as e:
         print(f"Error during processing: {e}")
         error_str = str(e).lower()
@@ -329,6 +331,8 @@ async def process_link(
             }
         }
         
+    except HTTPException as he:
+        raise he
     except Exception as e:
         print(f"Error during processing link: {e}")
         error_str = str(e).lower()
