@@ -152,8 +152,8 @@ export default function Home() {
           <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-full blur-2xl opacity-60 animate-pulse"></div>
           {/* Profile Image Container */}
           <div className="relative w-40 h-40 rounded-full border-4 border-slate-800 overflow-hidden shadow-2xl">
-            {/* The user should add suraj.png to the public folder */}
-            <img src="/suraj.png" alt="Suraj M S" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = 'https://ui-avatars.com/api/?name=Suraj+MS&background=random&size=200' }} />
+            {/* The user should add suraj.jpeg to the public folder */}
+            <img src="/suraj.jpeg" alt="Suraj M S" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = 'https://ui-avatars.com/api/?name=Suraj+MS&background=random&size=200' }} />
           </div>
         </div>
         <h2 className="text-4xl font-extrabold text-white mb-2">Suraj M S</h2>
