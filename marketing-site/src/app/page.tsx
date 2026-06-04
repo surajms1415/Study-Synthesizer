@@ -160,10 +160,6 @@ export default function Home() {
         <p className="text-lg font-semibold text-indigo-300 tracking-wide">Founder & Developer</p>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-slate-950 text-slate-500 pb-12 text-center">
-        <p>© 2026 StudySynthesizer. Built for placement season.</p>
-      </footer>
     </div>
   );
 }
