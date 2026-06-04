@@ -54,8 +54,8 @@ export default function Home() {
 
   const submitFeedback = async (rating: "up" | "down", comment: string = "") => {
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://study-synthesizer.onrender.com";
-      await fetch(`${API_BASE_URL}/api/feedback`, {
+      const CLOUD_API = "https://study-synthesizer.onrender.com";
+      await fetch(`${CLOUD_API}/api/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rating, comment })
@@ -78,8 +78,8 @@ export default function Home() {
 
   const trackDownload = async () => {
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://study-synthesizer.onrender.com";
-      await fetch(`${API_BASE_URL}/api/stats/download`, { method: "POST" });
+      const CLOUD_API = "https://study-synthesizer.onrender.com";
+      await fetch(`${CLOUD_API}/api/stats/download`, { method: "POST" });
     } catch (e) {}
   };
   const isDarkMode = true;
@@ -147,8 +147,8 @@ export default function Home() {
     }
 
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://study-synthesizer.onrender.com";
-      const res = await fetch(`${API_BASE_URL}/api/upload`, {
+      const LOCAL_API = "http://localhost:8000";
+      const res = await fetch(`${LOCAL_API}/api/upload`, {
         method: "POST",
         body: formData,
       });
@@ -169,7 +169,7 @@ export default function Home() {
         setActiveTab("detailed");
         setResult({ detailed_notes: "", one_line_points: "", definitions: "", quiz: "", flashcards: [], task_id: data.task_id });
         
-        const eventSource = new EventSource(`${API_BASE_URL}/api/stream/${data.task_id}`);
+        const eventSource = new EventSource(`${LOCAL_API}/api/stream/${data.task_id}`);
         
         eventSource.onmessage = (event) => {
           const streamData = JSON.parse(event.data);
@@ -243,8 +243,8 @@ export default function Home() {
     }
 
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://study-synthesizer.onrender.com";
-      const res = await fetch(`${API_BASE_URL}/api/process-link`, {
+      const LOCAL_API = "http://localhost:8000";
+      const res = await fetch(`${LOCAL_API}/api/process-link`, {
         method: "POST",
         body: formData,
       });
@@ -265,7 +265,7 @@ export default function Home() {
         setActiveTab("detailed");
         setResult({ detailed_notes: "", one_line_points: "", definitions: "", quiz: "", flashcards: [], task_id: data.task_id });
         
-        const eventSource = new EventSource(`${API_BASE_URL}/api/stream/${data.task_id}`);
+        const eventSource = new EventSource(`${LOCAL_API}/api/stream/${data.task_id}`);
         
         eventSource.onmessage = (event) => {
           const streamData = JSON.parse(event.data);
@@ -690,7 +690,7 @@ export default function Home() {
                 <div className="shrink-0 flex pr-1">
                   {result.docx_urls && activeTab !== "flashcards" && result.docx_urls[activeTab] && (
                     <a 
-                      href={`${process.env.NEXT_PUBLIC_API_URL || "https://study-synthesizer.onrender.com"}${result.docx_urls[activeTab]}`}
+                      href={`http://localhost:8000${result.docx_urls[activeTab]}`}
                       download
                       onClick={trackDownload}
                       className={`flex items-center justify-center space-x-2 px-5 py-2 rounded-lg text-sm font-bold transition-all duration-300 whitespace-nowrap border shadow-md hover:scale-105 ${isDarkMode ? 'bg-white/10 border-white/20 hover:bg-white/20 text-white' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'}`}

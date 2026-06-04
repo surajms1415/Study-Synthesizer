@@ -16,7 +16,7 @@
   },
   "build": {
     "appId": "com.videoinsight.studysynthesizer",
-    "productName": "Study Synthesizer",
+    "productName": "StudySynthesizer",
     "directories": {
       "output": "dist"
     },

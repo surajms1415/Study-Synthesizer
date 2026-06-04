@@ -50,7 +50,7 @@ export default function Home() {
         </p>
         
         <div className="flex justify-center space-x-4 mb-16">
-          <a href="#" className="flex items-center space-x-2 bg-indigo-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-indigo-700 hover:scale-105 transition-all shadow-xl shadow-indigo-600/30">
+          <a href="https://github.com/surajms1415/Study-Synthesizer/releases/download/v1.0.0/StudySynthesizer.Setup.1.0.0.exe" className="flex items-center space-x-2 bg-indigo-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-indigo-700 hover:scale-105 transition-all shadow-xl shadow-indigo-600/30">
             <Download className="w-5 h-5" />
             <span>Download for Windows</span>
           </a>
