@@ -1,0 +1,5 @@
+
+backend/stats.db
+temp/
+backend/venv/
+

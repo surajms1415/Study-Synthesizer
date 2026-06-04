@@ -1,16 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UploadCloud, FileText, CheckCircle2, Download, Link as LinkIcon, Video, FileUp, X, Moon, Sun, Loader2, MessageSquare, ListChecks, FileQuestion, Layers } from "lucide-react";
+import { UploadCloud, FileText, CheckCircle2, Download, Link as LinkIcon, Video, FileUp, X, Moon, Sun, Loader2, MessageSquare, ListChecks, FileQuestion, Layers, ThumbsUp, ThumbsDown, Send } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export default function Home() {
   const [mode, setMode] = useState<"file" | "link">("file");
+  const [analysisMode, setAnalysisMode] = useState<"full" | "partial">("full");
+  const [videoIntervals, setVideoIntervals] = useState<{start: string, end: string}[]>([{start: "", end: ""}]);
+  const [docIntervals, setDocIntervals] = useState<{start: string, end: string}[]>([{start: "", end: ""}]);
   const [docs, setDocs] = useState<File[]>([]);
   const [url, setUrl] = useState("");
   const [focusTopic, setFocusTopic] = useState("");
   
+  const [streamStatus, setStreamStatus] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ 
     detailed_notes?: string; 
@@ -44,9 +48,41 @@ export default function Home() {
   const [flashcardIndex, setFlashcardIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   
+  const [feedbackState, setFeedbackState] = useState<"idle" | "rating" | "submitted">("idle");
+  const [selectedRating, setSelectedRating] = useState<"up" | "down" | null>(null);
+  const [feedbackText, setFeedbackText] = useState("");
 
+  const submitFeedback = async (rating: "up" | "down", comment: string = "") => {
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      await fetch(`${API_BASE_URL}/api/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating, comment })
+      });
+      setFeedbackState("submitted");
+    } catch (e) {}
+  };
 
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const handleRatingClick = (rating: "up" | "down") => {
+    setSelectedRating(rating);
+    setFeedbackState("rating");
+    submitFeedback(rating, "");
+  };
+
+  const handleCommentSubmit = () => {
+    if (selectedRating) {
+      submitFeedback(selectedRating, feedbackText);
+    }
+  };
+
+  const trackDownload = async () => {
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      await fetch(`${API_BASE_URL}/api/stats/download`, { method: "POST" });
+    } catch (e) {}
+  };
+  const isDarkMode = true;
 
   // --- THEME CLASSES ---
   const appBg = isDarkMode ? "bg-[#070b14] text-neutral-50" : "bg-[#f8fafc] text-slate-800";
@@ -69,6 +105,29 @@ export default function Home() {
     setDocs(prev => prev.filter((_, i) => i !== index));
   };
 
+  const getEnhancedFocusTopic = () => {
+    let enhanced = focusTopic.trim();
+    if (analysisMode === "partial") {
+        let constraints: string[] = [];
+        const validVideoIntervals = videoIntervals.filter(i => i.start && i.end);
+        if (validVideoIntervals.length > 0) {
+            const ranges = validVideoIntervals.map(i => `${i.start} to ${i.end}`).join(", ");
+            constraints.push(`Only analyze the video/audio content exactly between timestamps: ${ranges}. Completely ignore the rest of the video/audio.`);
+        }
+        
+        const validDocIntervals = docIntervals.filter(i => i.start && i.end);
+        if (validDocIntervals.length > 0) {
+            const ranges = validDocIntervals.map(i => `pages/slides ${i.start}-${i.end}`).join(", ");
+            constraints.push(`For the documents, only analyze the content exactly within: ${ranges}. Completely ignore the rest of the documents.`);
+        }
+        
+        if (constraints.length > 0) {
+            enhanced += (enhanced ? "\n\n" : "") + "CRITICAL PARTIAL ANALYSIS CONSTRAINTS: " + constraints.join(" ");
+        }
+    }
+    return enhanced;
+  };
+
   const handleUpload = async () => {
     if (docs.length === 0) return;
     setLoading(true);
@@ -79,8 +138,9 @@ export default function Home() {
     docs.forEach(doc => {
       formData.append("docs", doc);
     });
-    if (focusTopic.trim()) {
-      formData.append("focus_topic", focusTopic.trim());
+    const finalFocusTopic = getEnhancedFocusTopic();
+    if (finalFocusTopic) {
+      formData.append("focus_topic", finalFocusTopic);
     }
     if (userApiKey.trim()) {
       formData.append("api_key", userApiKey.trim());
@@ -103,11 +163,60 @@ export default function Home() {
         throw new Error(errMsg);
       }
       const data = await res.json();
-      setResult(data);
-      setActiveTab("detailed");
+      
+      if (data.status === "processing" && data.task_id) {
+        setStreamStatus("Initializing task...");
+        setActiveTab("detailed");
+        setResult({ detailed_notes: "", one_line_points: "", definitions: "", quiz: "", flashcards: [], task_id: data.task_id });
+        
+        const eventSource = new EventSource(`${API_BASE_URL}/api/stream/${data.task_id}`);
+        
+        eventSource.onmessage = (event) => {
+          const streamData = JSON.parse(event.data);
+          
+          if (streamData.type === "status") {
+            setStreamStatus(streamData.message);
+          } else if (streamData.type === "chunk") {
+            setResult(prev => {
+              const current = prev || { detailed_notes: "", one_line_points: "", definitions: "", quiz: "", flashcards: [], task_id: data.task_id };
+              const updated = { ...current };
+              
+              if (streamData.section === "detailed_notes") updated.detailed_notes = (updated.detailed_notes || "") + streamData.text;
+              else if (streamData.section === "one_line_points") updated.one_line_points = (updated.one_line_points || "") + streamData.text;
+              else if (streamData.section === "definitions") updated.definitions = (updated.definitions || "") + streamData.text;
+              else if (streamData.section === "quiz") updated.quiz = (updated.quiz || "") + streamData.text;
+              else if (streamData.section === "flashcards_update") {
+                try { updated.flashcards = JSON.parse(streamData.text); } catch(e) {}
+              }
+              return updated;
+            });
+          } else if (streamData.type === "complete") {
+            setStreamStatus("Complete!");
+            if (streamData.result && streamData.result.docx_urls) {
+               setResult(prev => prev ? ({ ...prev, docx_urls: streamData.result.docx_urls }) : prev);
+            }
+            eventSource.close();
+            setLoading(false);
+          } else if (streamData.type === "error") {
+            setError(streamData.message);
+            eventSource.close();
+            setLoading(false);
+          }
+        };
+
+        eventSource.onerror = (err) => {
+          console.error("EventSource error:", err);
+          eventSource.close();
+          setError("Connection to the stream was lost.");
+          setLoading(false);
+        };
+      } else {
+        setResult(data);
+        setActiveTab("detailed");
+        setLoading(false);
+      }
     } catch (err: any) {
       setError(err.message || "Failed to upload and process document notes.");
-    } finally {
       setLoading(false);
     }
   };
@@ -125,8 +234,9 @@ export default function Home() {
     docs.forEach(doc => {
       formData.append("docs", doc);
     });
-    if (focusTopic.trim()) {
-      formData.append("focus_topic", focusTopic.trim());
+    const finalFocusTopic = getEnhancedFocusTopic();
+    if (finalFocusTopic) {
+      formData.append("focus_topic", finalFocusTopic);
     }
     if (userApiKey.trim()) {
       formData.append("api_key", userApiKey.trim());
@@ -149,11 +259,60 @@ export default function Home() {
         throw new Error(errMsg);
       }
       const data = await res.json();
-      setResult(data);
-      setActiveTab("detailed");
+      
+      if (data.status === "processing" && data.task_id) {
+        setStreamStatus("Initializing link task...");
+        setActiveTab("detailed");
+        setResult({ detailed_notes: "", one_line_points: "", definitions: "", quiz: "", flashcards: [], task_id: data.task_id });
+        
+        const eventSource = new EventSource(`${API_BASE_URL}/api/stream/${data.task_id}`);
+        
+        eventSource.onmessage = (event) => {
+          const streamData = JSON.parse(event.data);
+          
+          if (streamData.type === "status") {
+            setStreamStatus(streamData.message);
+          } else if (streamData.type === "chunk") {
+            setResult(prev => {
+              const current = prev || { detailed_notes: "", one_line_points: "", definitions: "", quiz: "", flashcards: [], task_id: data.task_id };
+              const updated = { ...current };
+              
+              if (streamData.section === "detailed_notes") updated.detailed_notes = (updated.detailed_notes || "") + streamData.text;
+              else if (streamData.section === "one_line_points") updated.one_line_points = (updated.one_line_points || "") + streamData.text;
+              else if (streamData.section === "definitions") updated.definitions = (updated.definitions || "") + streamData.text;
+              else if (streamData.section === "quiz") updated.quiz = (updated.quiz || "") + streamData.text;
+              else if (streamData.section === "flashcards_update") {
+                try { updated.flashcards = JSON.parse(streamData.text); } catch(e) {}
+              }
+              return updated;
+            });
+          } else if (streamData.type === "complete") {
+            setStreamStatus("Complete!");
+            if (streamData.result && streamData.result.docx_urls) {
+               setResult(prev => prev ? ({ ...prev, docx_urls: streamData.result.docx_urls }) : prev);
+            }
+            eventSource.close();
+            setLoading(false);
+          } else if (streamData.type === "error") {
+            setError(streamData.message);
+            eventSource.close();
+            setLoading(false);
+          }
+        };
+
+        eventSource.onerror = (err) => {
+          console.error("EventSource error:", err);
+          eventSource.close();
+          setError("Connection to the stream was lost.");
+          setLoading(false);
+        };
+      } else {
+        setResult(data);
+        setActiveTab("detailed");
+        setLoading(false);
+      }
     } catch (err: any) {
       setError(err.message || "Failed to process the video link. Make sure the URL is accessible.");
-    } finally {
       setLoading(false);
     }
   };
@@ -162,14 +321,7 @@ export default function Home() {
 
   return (
     <main className={`min-h-screen ${appBg} p-8 md:p-16 selection:bg-indigo-500/30 relative overflow-hidden font-sans transition-colors duration-500`}>
-      {/* Theme Toggle Button */}
-      <button 
-        onClick={() => setIsDarkMode(!isDarkMode)}
-        className={`absolute top-6 right-6 p-3 rounded-full transition-all duration-300 shadow-lg ${toggleBtnBg} hover:scale-110 z-50`}
-        title={`Switch to ${isDarkMode ? 'Light' : 'Dark'} Mode`}
-      >
-        {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-      </button>
+      {/* Theme Toggle Button Removed */}
 
       {/* Dynamic Background Gradients */}
       <div className={`fixed top-[-10%] left-1/2 -translate-x-1/2 w-[800px] h-[600px] blur-[120px] rounded-full pointer-events-none animate-float transition-colors duration-1000 ${isDarkMode ? 'bg-indigo-600/20' : 'bg-blue-400/20'}`} />
@@ -307,6 +459,124 @@ export default function Home() {
                     />
                   </div>
 
+                  {/* ANALYSIS MODE TOGGLE */}
+                  <div className={`space-y-4 pt-4 border-t ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
+                    <label className={`text-sm font-medium ml-1 transition-colors ${isDarkMode ? 'text-neutral-300' : 'text-slate-700'}`}>Analysis Scope</label>
+                    <div className={`flex rounded-xl p-1 ${isDarkMode ? 'bg-black/40 border border-white/5' : 'bg-slate-100 border border-slate-200'}`}>
+                      <button
+                        onClick={() => setAnalysisMode("full")}
+                        className={`flex-1 flex items-center justify-center py-2 text-sm font-medium rounded-lg transition-all ${analysisMode === "full" ? (isDarkMode ? "bg-indigo-500/30 text-indigo-200 shadow-lg border border-indigo-500/30" : "bg-indigo-100 text-indigo-700 shadow-md border border-indigo-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
+                      >
+                        Full Analysis
+                      </button>
+                      <button
+                        onClick={() => setAnalysisMode("partial")}
+                        className={`flex-1 flex items-center justify-center py-2 text-sm font-medium rounded-lg transition-all ${analysisMode === "partial" ? (isDarkMode ? "bg-amber-500/30 text-amber-200 shadow-lg border border-amber-500/30" : "bg-amber-100 text-amber-700 shadow-md border border-amber-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
+                      >
+                        Partial / Selective
+                      </button>
+                    </div>
+
+                    {/* PARTIAL ANALYSIS INTERVALS */}
+                    {analysisMode === "partial" && (
+                      <div className="space-y-6 pt-2 animate-in fade-in slide-in-from-top-4 duration-500">
+                        {/* Video Intervals */}
+                        <div className="space-y-3">
+                          <label className={`text-xs font-semibold uppercase tracking-wider ml-1 ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>Video/Audio Time Intervals</label>
+                          {videoIntervals.map((interval, idx) => (
+                            <div key={`vid-${idx}`} className="flex items-center space-x-2">
+                              <input
+                                type="text"
+                                placeholder="Start (e.g. 1:15)"
+                                value={interval.start}
+                                onChange={(e) => {
+                                  const newVals = [...videoIntervals];
+                                  newVals[idx].start = e.target.value;
+                                  setVideoIntervals(newVals);
+                                }}
+                                className={`flex-1 rounded-lg px-3 py-2 outline-none text-sm transition-all shadow-inner ${inputBg}`}
+                              />
+                              <span className={mutedText}>-</span>
+                              <input
+                                type="text"
+                                placeholder="End (e.g. 5:30)"
+                                value={interval.end}
+                                onChange={(e) => {
+                                  const newVals = [...videoIntervals];
+                                  newVals[idx].end = e.target.value;
+                                  setVideoIntervals(newVals);
+                                }}
+                                className={`flex-1 rounded-lg px-3 py-2 outline-none text-sm transition-all shadow-inner ${inputBg}`}
+                              />
+                              {idx === videoIntervals.length - 1 ? (
+                                <button
+                                  onClick={() => setVideoIntervals([...videoIntervals, {start: "", end: ""}])}
+                                  className={`p-2 rounded-lg transition-all hover:scale-110 ${isDarkMode ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/40' : 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'}`}
+                                >
+                                  +
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => setVideoIntervals(videoIntervals.filter((_, i) => i !== idx))}
+                                  className={`p-2 rounded-lg transition-all hover:scale-110 ${isDarkMode ? 'bg-red-500/20 text-red-300 hover:bg-red-500/40' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Doc Intervals */}
+                        <div className="space-y-3">
+                          <label className={`text-xs font-semibold uppercase tracking-wider ml-1 ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>Notes/Slides Page Intervals</label>
+                          {docIntervals.map((interval, idx) => (
+                            <div key={`doc-${idx}`} className="flex items-center space-x-2">
+                              <input
+                                type="text"
+                                placeholder="Start Page/Slide"
+                                value={interval.start}
+                                onChange={(e) => {
+                                  const newVals = [...docIntervals];
+                                  newVals[idx].start = e.target.value;
+                                  setDocIntervals(newVals);
+                                }}
+                                className={`flex-1 rounded-lg px-3 py-2 outline-none text-sm transition-all shadow-inner ${inputBg}`}
+                              />
+                              <span className={mutedText}>-</span>
+                              <input
+                                type="text"
+                                placeholder="End Page/Slide"
+                                value={interval.end}
+                                onChange={(e) => {
+                                  const newVals = [...docIntervals];
+                                  newVals[idx].end = e.target.value;
+                                  setDocIntervals(newVals);
+                                }}
+                                className={`flex-1 rounded-lg px-3 py-2 outline-none text-sm transition-all shadow-inner ${inputBg}`}
+                              />
+                              {idx === docIntervals.length - 1 ? (
+                                <button
+                                  onClick={() => setDocIntervals([...docIntervals, {start: "", end: ""}])}
+                                  className={`p-2 rounded-lg transition-all hover:scale-110 ${isDarkMode ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/40' : 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200'}`}
+                                >
+                                  +
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => setDocIntervals(docIntervals.filter((_, i) => i !== idx))}
+                                  className={`p-2 rounded-lg transition-all hover:scale-110 ${isDarkMode ? 'bg-red-500/20 text-red-300 hover:bg-red-500/40' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <button
                     disabled={(docs.length === 0 && !url) || loading}
                     onClick={mode === "file" ? handleUpload : handleLinkProcess}
@@ -315,7 +585,7 @@ export default function Home() {
                     {loading ? (
                       <div className="flex items-center space-x-3">
                         <Loader2 className="w-6 h-6 animate-spin" />
-                        <span className="animate-pulse tracking-widest font-semibold">SYNTHESIZING...</span>
+                        <span className="animate-pulse tracking-widest font-semibold">{streamStatus ? streamStatus.toUpperCase() : "PROCESSING..."}</span>
                       </div>
                     ) : (
                       <span className="tracking-wide">Generate Study Material</span>
@@ -422,6 +692,7 @@ export default function Home() {
                     <a 
                       href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${result.docx_urls[activeTab]}`}
                       download
+                      onClick={trackDownload}
                       className={`flex items-center justify-center space-x-2 px-5 py-2 rounded-lg text-sm font-bold transition-all duration-300 whitespace-nowrap border shadow-md hover:scale-105 ${isDarkMode ? 'bg-white/10 border-white/20 hover:bg-white/20 text-white' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'}`}
                     >
                       <Download className="w-4 h-4" />
@@ -499,6 +770,47 @@ export default function Home() {
                   >
                     {activeTab === "detailed" ? (result.detailed_notes || "") : activeTab === "definitions" ? (result.definitions || "") : activeTab === "points" ? (result.one_line_points || "") : (result.quiz || "")}
                   </ReactMarkdown>
+                  
+                  {/* FEEDBACK COMPONENT */}
+                  <div className={`mt-12 pt-8 border-t flex flex-col items-center justify-center animate-in fade-in ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
+                    {feedbackState === "idle" ? (
+                      <div className="flex flex-col items-center space-y-4">
+                        <p className={`text-sm font-medium ${mutedText}`}>Was this generation helpful?</p>
+                        <div className="flex space-x-4">
+                          <button onClick={() => handleRatingClick("up")} className={`p-3 rounded-full transition-all hover:scale-110 ${isDarkMode ? 'bg-white/5 hover:bg-emerald-500/20 text-emerald-400' : 'bg-slate-100 hover:bg-emerald-100 text-emerald-600'}`}>
+                            <ThumbsUp className="w-5 h-5" />
+                          </button>
+                          <button onClick={() => handleRatingClick("down")} className={`p-3 rounded-full transition-all hover:scale-110 ${isDarkMode ? 'bg-white/5 hover:bg-red-500/20 text-red-400' : 'bg-slate-100 hover:bg-red-100 text-red-600'}`}>
+                            <ThumbsDown className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : feedbackState === "rating" ? (
+                      <div className="flex flex-col items-center space-y-4 w-full max-w-md">
+                        <p className={`text-sm font-medium flex items-center space-x-2 ${primaryText}`}>
+                           <span>{selectedRating === "up" ? "👍" : "👎"} Thanks for the feedback! Care to tell us more?</span>
+                        </p>
+                        <div className="flex w-full space-x-2">
+                          <input 
+                            type="text" 
+                            value={feedbackText} 
+                            onChange={(e) => setFeedbackText(e.target.value)} 
+                            placeholder="Optional comments..." 
+                            className={`flex-1 rounded-xl px-4 py-2 outline-none text-sm transition-all shadow-inner ${inputBg}`} 
+                          />
+                          <button onClick={handleCommentSubmit} className="p-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white transition-all flex items-center justify-center">
+                            <Send className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={`flex items-center space-x-2 text-sm font-medium ${isDarkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Feedback saved. Thank you!</span>
+                      </div>
+                    )}
+                  </div>
+
                 </div>
               )}
             </div>
@@ -516,7 +828,7 @@ export default function Home() {
            
            <h3 className={`text-2xl font-extrabold tracking-tight mb-2 ${primaryText}`}>Suraj M S</h3>
            <p className={`text-sm tracking-wide font-semibold flex items-center justify-center space-x-2 ${isDarkMode ? 'text-indigo-300' : 'text-indigo-600'}`}>
-             Owner & Creator 
+             Founder & Developer 
            </p>
         </div>
 
