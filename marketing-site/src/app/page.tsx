@@ -21,7 +21,7 @@ export default function Home() {
   }, []);
 
   const totalReviews = stats ? stats.thumbs_up + stats.thumbs_down : 0;
-  const approvalRating = totalReviews > 0 ? Math.round((stats!.thumbs_up / totalReviews) * 100) : 100;
+  const approvalRating = totalReviews > 0 ? Math.round((stats!.thumbs_up / totalReviews) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500/30">
@@ -49,13 +49,10 @@ export default function Home() {
           Upload lectures, YouTube links, or documents and let our AI instantly generate deep-dive summaries, 1-line highlights, and mastery quizzes.
         </p>
         
-        <div className="flex justify-center space-x-4 mb-16">
+        <div className="flex justify-center mb-16">
           <a href="https://github.com/surajms1415/Study-Synthesizer/releases/download/v1.0.0/StudySynthesizer.Setup.1.0.0.exe" className="flex items-center space-x-2 bg-indigo-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-indigo-700 hover:scale-105 transition-all shadow-xl shadow-indigo-600/30">
             <Download className="w-5 h-5" />
             <span>Download for Windows</span>
-          </a>
-          <a href="#" className="flex items-center space-x-2 bg-white text-slate-800 border border-slate-200 px-8 py-4 rounded-full font-bold text-lg hover:bg-slate-50 hover:scale-105 transition-all shadow-sm">
-            <span>View on GitHub</span>
           </a>
         </div>
 
@@ -148,8 +145,23 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Founder Section */}
+      <section className="bg-slate-950 py-20 border-t border-slate-800 text-center flex flex-col items-center">
+        <div className="relative mb-6">
+          {/* Glowing background */}
+          <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-full blur-2xl opacity-60 animate-pulse"></div>
+          {/* Profile Image Container */}
+          <div className="relative w-40 h-40 rounded-full border-4 border-slate-800 overflow-hidden shadow-2xl">
+            {/* The user should add suraj.png to the public folder */}
+            <img src="/suraj.png" alt="Suraj M S" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = 'https://ui-avatars.com/api/?name=Suraj+MS&background=random&size=200' }} />
+          </div>
+        </div>
+        <h2 className="text-4xl font-extrabold text-white mb-2">Suraj M S</h2>
+        <p className="text-lg font-semibold text-indigo-300 tracking-wide">Founder & Developer</p>
+      </section>
+
       {/* Footer */}
-      <footer className="bg-slate-950 text-slate-500 py-12 text-center">
+      <footer className="bg-slate-950 text-slate-500 pb-12 text-center">
         <p>© 2026 StudySynthesizer. Built for placement season.</p>
       </footer>
     </div>
