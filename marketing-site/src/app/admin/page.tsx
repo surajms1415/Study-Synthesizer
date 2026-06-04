@@ -23,7 +23,7 @@ export default function AdminDashboard() {
 
   const fetchReviews = async () => {
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://study-synthesizer.onrender.com";
       const res = await fetch(`${API_BASE_URL}/api/admin/feedback?secret=${password}`);
       if (res.ok) {
         const data = await res.json();

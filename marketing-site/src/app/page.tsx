@@ -13,7 +13,7 @@ export default function Home() {
 
   useEffect(() => {
     // Fetch live stats from backend
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://study-synthesizer.onrender.com";
     fetch(`${API_BASE_URL}/api/stats/summary`)
       .then(res => res.json())
       .then(data => setStats(data))

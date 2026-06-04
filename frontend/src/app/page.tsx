@@ -54,7 +54,7 @@ export default function Home() {
 
   const submitFeedback = async (rating: "up" | "down", comment: string = "") => {
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://study-synthesizer.onrender.com";
       await fetch(`${API_BASE_URL}/api/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -78,7 +78,7 @@ export default function Home() {
 
   const trackDownload = async () => {
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://study-synthesizer.onrender.com";
       await fetch(`${API_BASE_URL}/api/stats/download`, { method: "POST" });
     } catch (e) {}
   };
@@ -147,7 +147,7 @@ export default function Home() {
     }
 
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://study-synthesizer.onrender.com";
       const res = await fetch(`${API_BASE_URL}/api/upload`, {
         method: "POST",
         body: formData,
@@ -243,7 +243,7 @@ export default function Home() {
     }
 
     try {
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://study-synthesizer.onrender.com";
       const res = await fetch(`${API_BASE_URL}/api/process-link`, {
         method: "POST",
         body: formData,
@@ -690,7 +690,7 @@ export default function Home() {
                 <div className="shrink-0 flex pr-1">
                   {result.docx_urls && activeTab !== "flashcards" && result.docx_urls[activeTab] && (
                     <a 
-                      href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}${result.docx_urls[activeTab]}`}
+                      href={`${process.env.NEXT_PUBLIC_API_URL || "https://study-synthesizer.onrender.com"}${result.docx_urls[activeTab]}`}
                       download
                       onClick={trackDownload}
                       className={`flex items-center justify-center space-x-2 px-5 py-2 rounded-lg text-sm font-bold transition-all duration-300 whitespace-nowrap border shadow-md hover:scale-105 ${isDarkMode ? 'bg-white/10 border-white/20 hover:bg-white/20 text-white' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'}`}

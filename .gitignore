@@ -3,3 +3,16 @@ backend/stats.db
 temp/
 backend/venv/
 
+
+electron-app/node_modules/
+marketing-site/node_modules/
+frontend/node_modules/
+
+
+electron-app/dist/
+marketing-site/.next/
+frontend/.next/
+
+
+backend/dist/
+
