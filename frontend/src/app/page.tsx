@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UploadCloud, FileText, CheckCircle2, Download, Link as LinkIcon, Video, FileUp, X, Moon, Sun, Loader2, MessageSquare, ListChecks, FileQuestion, Layers, ThumbsUp, ThumbsDown, Send } from "lucide-react";
+import { FileText, CheckCircle2, Download, Link as LinkIcon, FileUp, X, Moon, Sun, Loader2, MessageSquare, ListChecks, FileQuestion, Layers, ThumbsUp, ThumbsDown, Send, Clock } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export default function Home() {
-  const [mode, setMode] = useState<"file" | "link">("file");
   const [analysisMode, setAnalysisMode] = useState<"full" | "partial">("full");
   const [videoIntervals, setVideoIntervals] = useState<{start: string, end: string}[]>([{start: "", end: ""}]);
   const [docIntervals, setDocIntervals] = useState<{start: string, end: string}[]>([{start: "", end: ""}]);
@@ -15,6 +14,7 @@ export default function Home() {
   const [focusTopic, setFocusTopic] = useState("");
   
   const [streamStatus, setStreamStatus] = useState<string>("");
+  const [ragProgress, setRagProgress] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ 
     detailed_notes?: string; 
@@ -26,7 +26,14 @@ export default function Home() {
     docx_urls?: { detailed?: string; points?: string; definitions?: string; quiz?: string; } 
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"detailed" | "points" | "definitions" | "quiz" | "flashcards">("detailed");
+  const [activeTab, setActiveTab] = useState<"detailed" | "points" | "definitions" | "quiz" | "flashcards" | "ask_ai">("detailed");
+  
+  const [ragQuestion, setRagQuestion] = useState("");
+  const [ragAnswer, setRagAnswer] = useState<{answer: string, sources: any[]}|null>(null);
+  const [ragLoading, setRagLoading] = useState(false);
+  const [ragError, setRagError] = useState("");
+  const [availableDocs, setAvailableDocs] = useState<{document_id: string, document_name: string}[]>([]);
+  const [selectedDocId, setSelectedDocId] = useState<string>("all");
   
   const [userApiKey, setUserApiKey] = useState("");
   
@@ -34,6 +41,17 @@ export default function Home() {
     const savedKey = localStorage.getItem("gemini_api_key_custom");
     if (savedKey) setUserApiKey(savedKey);
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "ask_ai" && availableDocs.length === 0) {
+      fetch("http://localhost:8000/api/rag/documents")
+        .then(res => res.json())
+        .then(data => {
+          if (data.documents) setAvailableDocs(data.documents);
+        })
+        .catch(err => console.error("Failed to load documents", err));
+    }
+  }, [activeTab]);
   
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -128,13 +146,17 @@ export default function Home() {
     return enhanced;
   };
 
-  const handleUpload = async () => {
-    if (docs.length === 0) return;
+  const handleProcess = async () => {
+    if (!url && docs.length === 0) return;
     setLoading(true);
     setError(null);
     setResult(null);
+    setRagProgress([]);
 
     const formData = new FormData();
+    if (url) {
+      formData.append("url", url);
+    }
     docs.forEach(doc => {
       formData.append("docs", doc);
     });
@@ -148,7 +170,7 @@ export default function Home() {
 
     try {
       const LOCAL_API = "http://localhost:8000";
-      const res = await fetch(`${LOCAL_API}/api/upload`, {
+      const res = await fetch(`${LOCAL_API}/api/process`, {
         method: "POST",
         body: formData,
       });
@@ -174,7 +196,12 @@ export default function Home() {
         eventSource.onmessage = (event) => {
           const streamData = JSON.parse(event.data);
           
-          if (streamData.type === "status") {
+          if (streamData.type === "rag_status") {
+            setRagProgress(prev => {
+              if (!prev.includes(streamData.step)) return [...prev, streamData.step];
+              return prev;
+            });
+          } else if (streamData.type === "status") {
             setStreamStatus(streamData.message);
           } else if (streamData.type === "chunk") {
             setResult(prev => {
@@ -216,108 +243,81 @@ export default function Home() {
         setLoading(false);
       }
     } catch (err: any) {
-      setError(err.message || "Failed to upload and process document notes.");
+      setError(err.message || "Failed to process the content. Make sure the URL is accessible.");
       setLoading(false);
     }
   };
-
-  const handleLinkProcess = async () => {
-    if (!url && docs.length === 0) return;
-    setLoading(true);
-    setError(null);
-    setResult(null);
-
-    const formData = new FormData();
-    if (url) {
-      formData.append("url", url);
-    }
-    docs.forEach(doc => {
-      formData.append("docs", doc);
-    });
-    const finalFocusTopic = getEnhancedFocusTopic();
-    if (finalFocusTopic) {
-      formData.append("focus_topic", finalFocusTopic);
-    }
-    if (userApiKey.trim()) {
-      formData.append("api_key", userApiKey.trim());
-    }
-
+  const handleRagSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ragQuestion.trim()) return;
+    
+    setRagLoading(true);
+    setRagError("");
+    setRagAnswer(null);
+    
     try {
       const LOCAL_API = "http://localhost:8000";
-      const res = await fetch(`${LOCAL_API}/api/process-link`, {
+      const res = await fetch(`${LOCAL_API}/api/rag/query`, {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: ragQuestion,
+          document_ids: selectedDocId === "all" ? undefined : [selectedDocId],
+          top_k: 5
+        }),
       });
-
       if (!res.ok) {
-        const errText = await res.text();
-        let errMsg = errText;
-        try { 
-          const errObj = JSON.parse(errText); 
-          if (errObj.detail) errMsg = errObj.detail;
-        } catch (e) {}
-        throw new Error(errMsg);
+        const text = await res.text();
+        throw new Error(text);
       }
       const data = await res.json();
-      
-      if (data.status === "processing" && data.task_id) {
-        setStreamStatus("Initializing link task...");
-        setActiveTab("detailed");
-        setResult({ detailed_notes: "", one_line_points: "", definitions: "", quiz: "", flashcards: [], task_id: data.task_id });
-        
-        const eventSource = new EventSource(`${LOCAL_API}/api/stream/${data.task_id}`);
-        
-        eventSource.onmessage = (event) => {
-          const streamData = JSON.parse(event.data);
-          
-          if (streamData.type === "status") {
-            setStreamStatus(streamData.message);
-          } else if (streamData.type === "chunk") {
-            setResult(prev => {
-              const current = prev || { detailed_notes: "", one_line_points: "", definitions: "", quiz: "", flashcards: [], task_id: data.task_id };
-              const updated = { ...current };
-              
-              if (streamData.section === "detailed_notes") updated.detailed_notes = (updated.detailed_notes || "") + streamData.text;
-              else if (streamData.section === "one_line_points") updated.one_line_points = (updated.one_line_points || "") + streamData.text;
-              else if (streamData.section === "definitions") updated.definitions = (updated.definitions || "") + streamData.text;
-              else if (streamData.section === "quiz") updated.quiz = (updated.quiz || "") + streamData.text;
-              else if (streamData.section === "flashcards_update") {
-                try { updated.flashcards = JSON.parse(streamData.text); } catch(e) {}
-              }
-              return updated;
-            });
-          } else if (streamData.type === "complete") {
-            setStreamStatus("Complete!");
-            if (streamData.result && streamData.result.docx_urls) {
-               setResult(prev => prev ? ({ ...prev, docx_urls: streamData.result.docx_urls }) : prev);
-            }
-            eventSource.close();
-            setLoading(false);
-          } else if (streamData.type === "error") {
-            setError(streamData.message);
-            eventSource.close();
-            setLoading(false);
-          }
-        };
-
-        eventSource.onerror = (err) => {
-          console.error("EventSource error:", err);
-          eventSource.close();
-          setError("Connection to the stream was lost.");
-          setLoading(false);
-        };
-      } else {
-        setResult(data);
-        setActiveTab("detailed");
-        setLoading(false);
-      }
+      setRagAnswer(data);
     } catch (err: any) {
-      setError(err.message || "Failed to process the video link. Make sure the URL is accessible.");
-      setLoading(false);
+      setRagError(err.message || "Failed to get an answer from AI.");
+    } finally {
+      setRagLoading(false);
     }
   };
 
+  const renderRagSource = (source: any, idx: number) => {
+    const meta = source.metadata;
+    let title = meta.document_name || "Unknown Source";
+    let detail = "";
+    let link = null;
 
+    if (meta.source_type === "pdf" && meta.page_number) {
+      detail = `Page ${meta.page_number}`;
+    } else if (meta.source_type === "pptx" && meta.slide_number) {
+      detail = `Slide ${meta.slide_number}`;
+    } else if (meta.source_type === "youtube" && meta.start_time !== undefined) {
+      const formatTime = (secs: number) => {
+        const m = Math.floor(secs / 60);
+        const s = Math.floor(secs % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
+      };
+      detail = `${formatTime(meta.start_time)}–${formatTime(meta.end_time || meta.start_time)}`;
+      link = `${meta.source_url}&t=${Math.floor(meta.start_time)}`;
+    } else if (meta.source_type === "web" && meta.source_url) {
+      detail = meta.source_url;
+      link = meta.source_url;
+    } else if (meta.section) {
+      detail = meta.section;
+    }
+    
+    const text = detail ? `${title} — ${detail}` : title;
+    
+    return (
+      <div key={idx} className={`text-xs p-2 rounded-lg border shadow-sm mb-2 ${isDarkMode ? 'bg-white/5 border-white/10 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+        {link ? (
+          <a href={link} target="_blank" rel="noopener noreferrer" className="font-semibold text-indigo-500 hover:underline">
+            {text}
+          </a>
+        ) : (
+          <span className="font-semibold">{text}</span>
+        )}
+      </div>
+    );
+  };
 
   return (
     <main className={`min-h-screen ${appBg} p-8 md:p-16 selection:bg-indigo-500/30 relative overflow-hidden font-sans transition-colors duration-500`}>
@@ -378,37 +378,18 @@ export default function Home() {
 
               {/* UPLOAD FORM */}
               <div className={`w-full backdrop-blur-xl rounded-3xl p-8 transition-all hover:shadow-2xl h-fit ${cardBg}`}>
-                <div className={`flex rounded-xl p-1 mb-8 ${isDarkMode ? 'bg-black/40 border border-white/5' : 'bg-slate-100 border border-slate-200'}`}>
-                  <button
-                    onClick={() => setMode("file")}
-                    className={`flex-1 flex items-center justify-center py-3 text-sm font-medium rounded-lg transition-all ${mode === "file" ? (isDarkMode ? "bg-white/10 text-white shadow-lg border border-white/10" : "bg-white text-indigo-600 shadow-md border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
-                  >
-                    <UploadCloud className="w-4 h-4 mr-2" />
-                    Upload Notes
-                  </button>
-                  <button
-                    onClick={() => setMode("link")}
-                    className={`flex-1 flex items-center justify-center py-3 text-sm font-medium rounded-lg transition-all ${mode === "link" ? (isDarkMode ? "bg-white/10 text-white shadow-lg border border-white/10" : "bg-white text-indigo-600 shadow-md border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
-                  >
-                    <LinkIcon className="w-4 h-4 mr-2" />
-                    Paste Link
-                  </button>
-                </div>
-
                 <div className="space-y-6">
                   {/* PRIMARY MEDIA INPUT */}
-                  {mode === "link" && (
-                    <div className="space-y-2 group">
-                      <label className={`text-sm font-medium ml-1 transition-colors ${isDarkMode ? 'text-neutral-300 group-focus-within:text-indigo-400' : 'text-slate-600 group-focus-within:text-indigo-600'}`}>Video YouTube/Direct Link (Optional)</label>
-                      <input 
-                        type="url"
-                        value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        placeholder="e.g. https://www.youtube.com/watch?v=..."
-                        className={`w-full rounded-xl px-4 py-4 outline-none transition-all shadow-inner hover:shadow-md ${inputBg}`}
-                      />
-                    </div>
-                  )}
+                  <div className="space-y-2 group">
+                    <label className={`text-sm font-medium ml-1 transition-colors ${isDarkMode ? 'text-neutral-300 group-focus-within:text-indigo-400' : 'text-slate-600 group-focus-within:text-indigo-600'}`}>YouTube or Web Page URL (Optional)</label>
+                    <input 
+                      type="url"
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      placeholder="e.g. https://www.youtube.com/watch?v=..."
+                      className={`w-full rounded-xl px-4 py-4 outline-none transition-all shadow-inner hover:shadow-md ${inputBg}`}
+                    />
+                  </div>
 
                   {/* SUPPLEMENTARY DOCUMENTS */}
                   <div className={`space-y-3 pt-4 border-t ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
@@ -579,13 +560,24 @@ export default function Home() {
 
                   <button
                     disabled={(docs.length === 0 && !url) || loading}
-                    onClick={mode === "file" ? handleUpload : handleLinkProcess}
+                    onClick={handleProcess}
                     className="w-full py-4 mt-8 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white text-lg font-bold rounded-xl focus:ring-4 focus:ring-indigo-500/30 transition-all duration-300 disabled:opacity-50 disabled:scale-100 hover:scale-[1.02] active:scale-95 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-indigo-500/40"
                   >
                     {loading ? (
-                      <div className="flex items-center space-x-3">
-                        <Loader2 className="w-6 h-6 animate-spin" />
-                        <span className="animate-pulse tracking-widest font-semibold">{streamStatus ? streamStatus.toUpperCase() : "PROCESSING..."}</span>
+                      <div className="flex flex-col items-center justify-center w-full">
+                        <div className="flex items-center space-x-3 mb-1">
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                          <span className="animate-pulse tracking-widest font-semibold">{streamStatus ? streamStatus.toUpperCase() : "PROCESSING..."}</span>
+                        </div>
+                        {ragProgress.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 justify-center mt-3">
+                            {ragProgress.map((step, idx) => (
+                              <span key={idx} className="text-[10px] px-2.5 py-1 rounded-full font-bold tracking-wider bg-white/20 text-white border border-white/30">
+                                {step}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <span className="tracking-wide">Generate Study Material</span>
@@ -638,14 +630,19 @@ export default function Home() {
         ) : (
           <div className="space-y-4 animate-in fade-in duration-700 slide-in-from-bottom-8 w-full max-w-5xl mx-auto">
             
-            {/* Top Left Back Button */}
-            <div className="flex justify-start">
+            {/* Top Navigation & Cleanup Warning */}
+            <div className="flex justify-between items-center mb-1">
               <button 
                 onClick={() => { setResult(null); setUrl(""); setDocs([]); setFocusTopic(""); }}
                 className={`inline-flex items-center px-4 py-2 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 shadow-md border text-sm ${isDarkMode ? 'text-indigo-300 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500/30' : 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-indigo-200'}`}
               >
                 ← Upload Another File
               </button>
+
+              <div className={`text-xs px-3 py-1.5 rounded-full flex items-center font-medium opacity-80 border ${isDarkMode ? 'bg-amber-500/10 text-amber-300 border-amber-500/20' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                <Clock className="w-3.5 h-3.5 mr-1.5" />
+                Automatically deleted after 48 hours of inactivity
+              </div>
             </div>
 
             <div className={`backdrop-blur-lg p-2 rounded-2xl border transition-all hover:shadow-2xl ${cardBg}`}>
@@ -659,24 +656,6 @@ export default function Home() {
                   >
                     Deep Dive Notes
                   </button>
-                  <button
-                    onClick={() => setActiveTab("definitions")}
-                    className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "definitions" ? (isDarkMode ? "bg-white/10 text-teal-300 shadow-md border border-white/5" : "bg-white text-teal-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
-                  >
-                    Definitions
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("points")}
-                    className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "points" ? (isDarkMode ? "bg-white/10 text-emerald-300 shadow-md border border-white/5" : "bg-white text-emerald-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
-                  >
-                    1-Line Highlights
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("quiz")}
-                    className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "quiz" ? (isDarkMode ? "bg-white/10 text-purple-300 shadow-md border border-white/5" : "bg-white text-purple-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
-                  >
-                    Mastery Quiz
-                  </button>
                   {result.flashcards && result.flashcards.length > 0 && (
                     <button
                       onClick={() => { setActiveTab("flashcards"); setFlashcardIndex(0); setShowAnswer(false); }}
@@ -685,12 +664,18 @@ export default function Home() {
                       Flashcards
                     </button>
                   )}
+                  <button
+                    onClick={() => setActiveTab("ask_ai")}
+                    className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "ask_ai" ? (isDarkMode ? "bg-white/10 text-rose-300 shadow-md border border-white/5" : "bg-white text-rose-600 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
+                  >
+                    Ask AI
+                  </button>
                 </div>
 
                 <div className="shrink-0 flex pr-1">
-                  {result.docx_urls && activeTab !== "flashcards" && result.docx_urls[activeTab] && (
+                  {result.docx_urls && ["detailed", "points", "definitions", "quiz"].includes(activeTab) && (result.docx_urls as any)[activeTab] && (
                     <a 
-                      href={`http://localhost:8000${result.docx_urls[activeTab]}`}
+                      href={`http://localhost:8000${(result.docx_urls as any)[activeTab]}`}
                       download
                       onClick={trackDownload}
                       className={`flex items-center justify-center space-x-2 px-5 py-2 rounded-lg text-sm font-bold transition-all duration-300 whitespace-nowrap border shadow-md hover:scale-105 ${isDarkMode ? 'bg-white/10 border-white/20 hover:bg-white/20 text-white' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'}`}
@@ -738,6 +723,69 @@ export default function Home() {
                       className={`px-6 py-3 rounded-xl font-medium transition-all duration-300 border shadow-md hover:scale-105 active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${isDarkMode ? 'bg-white/10 hover:bg-white/20 text-white border-white/10' : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'}`}
                     >Next</button>
                   </div>
+                </div>
+              ) : activeTab === "ask_ai" ? (
+                <div className="flex flex-col w-full py-2">
+                  <div className="flex flex-wrap items-center justify-between mb-6">
+                    <h2 className={`text-2xl font-bold flex items-center ${primaryText}`}>
+                      <MessageSquare className="w-6 h-6 mr-3 text-indigo-500" />
+                      Ask AI
+                    </h2>
+                    
+                    <select 
+                      value={selectedDocId} 
+                      onChange={(e) => setSelectedDocId(e.target.value)}
+                      className={`px-4 py-2 rounded-xl border text-sm font-medium outline-none shadow-sm transition-all focus:border-indigo-500 ${isDarkMode ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-slate-200 text-slate-800'}`}
+                    >
+                      <option value="all">Search All Knowledge Base</option>
+                      {availableDocs.map(doc => (
+                        <option key={doc.document_id} value={doc.document_id}>{doc.document_name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <form onSubmit={handleRagSubmit} className="flex flex-col space-y-4 mb-8">
+                    <div className="flex w-full space-x-2">
+                      <input 
+                        type="text"
+                        value={ragQuestion}
+                        onChange={(e) => setRagQuestion(e.target.value)}
+                        placeholder="Ask a question about the uploaded materials..."
+                        className={`flex-1 rounded-xl px-4 py-3 outline-none transition-all shadow-inner border focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 ${inputBg}`}
+                      />
+                      <button 
+                        type="submit"
+                        disabled={ragLoading || !ragQuestion.trim()}
+                        className={`px-6 py-3 rounded-xl font-bold transition-all shadow-md active:scale-95 text-white disabled:opacity-50 disabled:pointer-events-none ${isDarkMode ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                      >
+                        {ragLoading ? "Thinking..." : "Ask"}
+                      </button>
+                    </div>
+                  </form>
+                  {ragError && (
+                    <div className="p-4 mb-6 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 font-medium">
+                      {ragError}
+                    </div>
+                  )}
+                  {ragAnswer && (
+                    <div className={`p-6 rounded-2xl shadow-sm border ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200'}`}>
+                      <h3 className={`text-lg font-bold mb-4 ${primaryText}`}>Answer</h3>
+                      <div className={`prose max-w-none ${isDarkMode ? 'prose-invert' : 'prose-slate'}`}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {ragAnswer.answer}
+                        </ReactMarkdown>
+                      </div>
+                      
+                      {ragAnswer.sources && ragAnswer.sources.length > 0 && (
+                        <div className="mt-8 pt-6 border-t border-dashed border-slate-500/30">
+                          <h4 className={`text-sm font-bold uppercase tracking-wider mb-4 ${mutedText}`}>Sources Cited</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {ragAnswer.sources.map((s, i) => renderRagSource(s, i))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (result.detailed_notes || result.one_line_points || result.quiz) && (
                 <div className="w-full">
