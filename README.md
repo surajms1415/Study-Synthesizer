@@ -1,6 +1,6 @@
 # Study Synthesizer 🧠
 
-**Study Synthesizer** is a lightweight, high-performance desktop-first AI learning assistant. It transforms raw study materials—ranging from long YouTube lectures to complex PDFs—into interactive Deep Dive notes, mastery quizzes, flashcards, and a fully conversational "Ask AI" context window.
+**Study Synthesizer** is a lightweight, high-performance desktop-first AI learning assistant. It transforms raw study materials—ranging from long YouTube lectures to complex PDFs—into interactive Deep Dive notes, flashcards, and a fully conversational "Ask AI" context window.
 
 Powered by **Gemini 2.5 Flash**, a local **ChromaDB** RAG implementation, and a blazingly fast Next.js/FastAPI stack, Study Synthesizer is built to be bundled as an offline-capable standalone Electron application.
 
