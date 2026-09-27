@@ -7,7 +7,7 @@ Powered by **Gemini 2.5 Flash**, a local **ChromaDB** RAG implementation, and a 
 ## ✨ Features
 
 - **Multi-Modal Ingestion**: Effortlessly process YouTube URLs (with automatic timestamp mapping), public web articles, and local document uploads (`.PDF`, `.DOCX`, `.PPTX`).
-- **AI Deep Dives & Quizzes**: Automatically synthesizes uploaded material into beautifully formatted Markdown Notes, 1-Line Highlights, Definitions, and Multiple-Choice Quizzes.
+- **AI Deep Dives & Quizzes**: Automatically synthesizes uploaded material into beautifully formatted Markdown Notes.
 - **Interactive Flashcards**: Auto-generates a 3D-flipping flashcard deck for rote memorization of core concepts.
 - **"Ask AI" (RAG System)**: Chat with your study materials! A built-in local Vector Database (ChromaDB) intelligently retrieves context to answer your questions, complete with precise source citations (e.g., `DBMS.pdf — Page 12` or `YouTube — 12:35–13:10`).
 - **Automated 48-Hour Data Cleanup**: Designed for privacy and storage efficiency. An internal SQLite background service tracks document lifecycles and safely wipes temporary files, processed audio/video, and RAG vector chunks after 48 hours of inactivity.
