@@ -15,4 +15,5 @@ frontend/.next/
 
 
 backend/dist/
+backend/build/
 
