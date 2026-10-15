@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { FileText, CheckCircle2, Download, Link as LinkIcon, FileUp, X, Moon, Sun, Loader2, MessageSquare, ListChecks, FileQuestion, Layers, ThumbsUp, ThumbsDown, Send, Clock, ChevronDown } from "lucide-react";
+import { useState, useEffect } from "react";
+import { FileText, CheckCircle2, Download, Link as LinkIcon, FileUp, X, Moon, Sun, Loader2, MessageSquare, ListChecks, FileQuestion, Layers, ThumbsUp, ThumbsDown, Send, Clock } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -36,18 +36,6 @@ export default function Home() {
   const [selectedDocId, setSelectedDocId] = useState<string>("all");
   
   const [userApiKey, setUserApiKey] = useState("");
-  const [showExportMenu, setShowExportMenu] = useState(false);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
-        setShowExportMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   useEffect(() => {
     const savedKey = localStorage.getItem("gemini_api_key_custom");
@@ -674,101 +662,38 @@ export default function Home() {
                 <div className="flex flex-wrap items-center justify-center gap-1 w-full xl:w-auto">
                   <button
                     onClick={() => setActiveTab("detailed")}
-                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "detailed" ? (isDarkMode ? "bg-white/10 text-indigo-300 shadow-md border border-white/5" : "bg-white text-indigo-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
+                    className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "detailed" ? (isDarkMode ? "bg-white/10 text-indigo-300 shadow-md border border-white/5" : "bg-white text-indigo-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
                   >
                     Deep Dive Notes
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("points")}
-                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "points" ? (isDarkMode ? "bg-white/10 text-emerald-300 shadow-md border border-white/5" : "bg-white text-emerald-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
-                  >
-                    Key Highlights
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("definitions")}
-                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "definitions" ? (isDarkMode ? "bg-white/10 text-teal-300 shadow-md border border-white/5" : "bg-white text-teal-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
-                  >
-                    Definitions
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("quiz")}
-                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "quiz" ? (isDarkMode ? "bg-white/10 text-purple-300 shadow-md border border-white/5" : "bg-white text-purple-700 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
-                  >
-                    Practice Quiz
                   </button>
                   {result.flashcards && result.flashcards.length > 0 && (
                     <button
                       onClick={() => { setActiveTab("flashcards"); setFlashcardIndex(0); setShowAnswer(false); }}
-                      className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "flashcards" ? (isDarkMode ? "bg-white/10 text-yellow-300 shadow-md border border-white/5" : "bg-white text-amber-600 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
+                      className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "flashcards" ? (isDarkMode ? "bg-white/10 text-yellow-300 shadow-md border border-white/5" : "bg-white text-amber-600 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
                     >
                       Flashcards
                     </button>
                   )}
                   <button
                     onClick={() => setActiveTab("ask_ai")}
-                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "ask_ai" ? (isDarkMode ? "bg-white/10 text-rose-300 shadow-md border border-white/5" : "bg-white text-rose-600 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
+                    className={`px-6 py-2 text-sm font-semibold rounded-lg transition-all duration-300 whitespace-nowrap ${activeTab === "ask_ai" ? (isDarkMode ? "bg-white/10 text-rose-300 shadow-md border border-white/5" : "bg-white text-rose-600 shadow border border-slate-200") : `hover:scale-105 ${mutedText} hover:${primaryText}`}`}
                   >
                     Ask AI
                   </button>
                 </div>
 
-                <div className="shrink-0 flex items-center space-x-2 pr-1 relative" ref={exportMenuRef}>
+                <div className="shrink-0 flex pr-1">
                   {result.task_id && !loading && (
-                    <>
-                      {["detailed", "points", "definitions", "quiz"].includes(activeTab) && (
-                        <a 
-                          href={`http://localhost:8000/api/download/${result.task_id}/${activeTab}`}
-                          download
-                          onClick={trackDownload}
-                          className={`flex items-center justify-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-bold transition-all duration-300 whitespace-nowrap border shadow-md hover:scale-105 ${isDarkMode ? 'bg-indigo-600/30 border-indigo-500/40 hover:bg-indigo-600/50 text-indigo-200' : 'bg-indigo-50 border-indigo-200 hover:bg-indigo-100 text-indigo-700'}`}
-                          title={`Download current tab (${activeTab}) as .docx`}
-                        >
-                          <Download className="w-4 h-4" />
-                          <span>Export .docx</span>
-                        </a>
-                      )}
-
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setShowExportMenu(!showExportMenu)}
-                          className={`flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-all duration-300 whitespace-nowrap border shadow-md hover:scale-105 ${isDarkMode ? 'bg-white/10 border-white/20 hover:bg-white/20 text-white' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'}`}
-                          title="Export documents to Microsoft Word (.docx)"
-                        >
-                          <Download className="w-4 h-4" />
-                          <span>Export</span>
-                          <ChevronDown className="w-3.5 h-3.5 opacity-70" />
-                        </button>
-
-                        {showExportMenu && (
-                          <div className={`absolute right-0 mt-2 w-56 rounded-xl border p-1.5 shadow-2xl z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200 ${isDarkMode ? 'bg-[#0d1322] border-white/15' : 'bg-white border-slate-200'}`}>
-                            <div className="px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase opacity-50">
-                              Download Word (.docx)
-                            </div>
-                            {[
-                              { id: "detailed", label: "Deep Dive Notes", icon: FileText },
-                              { id: "points", label: "Key Highlights", icon: ListChecks },
-                              { id: "definitions", label: "Definitions", icon: FileText },
-                              { id: "quiz", label: "Practice Quiz", icon: FileQuestion },
-                            ].map((opt) => (
-                              <a
-                                key={opt.id}
-                                href={`http://localhost:8000/api/download/${result.task_id}/${opt.id}`}
-                                download
-                                onClick={() => {
-                                  trackDownload();
-                                  setShowExportMenu(false);
-                                }}
-                                className={`flex items-center space-x-2.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all ${isDarkMode ? 'hover:bg-white/10 text-neutral-200 hover:text-white' : 'hover:bg-indigo-50 text-slate-700 hover:text-indigo-600'}`}
-                              >
-                                <opt.icon className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                                <span>{opt.label}</span>
-                              </a>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </>
+                    <a 
+                      href={`http://localhost:8000/api/download/${result.task_id}/detailed`}
+                      download
+                      onClick={trackDownload}
+                      className={`flex items-center justify-center space-x-2 px-5 py-2 rounded-lg text-sm font-bold transition-all duration-300 whitespace-nowrap border shadow-md hover:scale-105 ${isDarkMode ? 'bg-white/10 border-white/20 hover:bg-white/20 text-white' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'}`}
+                      title="Export Deep Dive Notes to Word (.docx)"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Export .docx</span>
+                    </a>
                   )}
                 </div>
               </div>
@@ -873,7 +798,7 @@ export default function Home() {
                     </div>
                   )}
                 </div>
-              ) : (result.detailed_notes || result.one_line_points || result.quiz || result.definitions || loading) && (
+              ) : (result.detailed_notes || loading) && (
                 <div className="w-full">
                   <ReactMarkdown 
                     remarkPlugins={[remarkGfm]}
@@ -902,7 +827,7 @@ export default function Home() {
                       }
                     }}
                   >
-                    {activeTab === "detailed" ? (result.detailed_notes || "") : activeTab === "definitions" ? (result.definitions || "") : activeTab === "points" ? (result.one_line_points || "") : (result.quiz || "")}
+                    {result.detailed_notes || ""}
                   </ReactMarkdown>
                   
                   {/* FEEDBACK COMPONENT */}
