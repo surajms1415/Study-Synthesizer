@@ -104,12 +104,16 @@ function startBackend() {
   console.log('Starting backend at:', backendExePath);
   
   if (fs.existsSync(backendExePath)) {
-    backendProcess = spawn(backendExePath, [], { detached: false });
-    // Process stdout/stderr commented out to prevent EPIPE broken pipe errors in packaged app
-    // backendProcess.stdout.on('data', (data) => console.log(`Backend stdout: ${data}`));
-    // backendProcess.stderr.on('data', (data) => console.error(`Backend stderr: ${data}`));
+    const backendDir = path.dirname(backendExePath);
+    backendProcess = spawn(backendExePath, [], { 
+      cwd: backendDir,
+      detached: false 
+    });
+    backendProcess.on('error', (err) => {
+      console.error('Failed to start backend process:', err);
+    });
   } else {
-    console.error(`Backend executable not found at ${backendExePath}. This is fine if running pure 'electron .' before building PyInstaller.`);
+    console.error(`Backend executable not found at ${backendExePath}.`);
   }
 }
 
