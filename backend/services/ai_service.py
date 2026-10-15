@@ -101,71 +101,89 @@ def analyze_video_content(audio_path=None, frame_paths=None, doc_paths=None, foc
     
     if emit_cb: emit_cb({"type": "status", "message": "Analyzing with Gemini (Streaming)..."})
     
-    max_retries = 3
-    response_stream = None
-    for attempt in range(max_retries):
-        try:
-            response_stream = client.models.generate_content_stream(
-                model='gemini-2.5-flash',
-                contents=uploaded_files + [prompt]
-            )
-            break
-        except Exception as e:
-            if attempt < max_retries - 1:
-                time.sleep(2 ** attempt * 5)
-            else:
-                if emit_cb: emit_cb({"type": "error", "message": f"Gemini Error: {str(e)}"})
-                return {"error": True}
-                
     detailed_notes, one_line_points, definitions, quiz, flashcards_raw = "", "", "", "", ""
     current_section = "detailed_notes"
     
-    buffer = ""
-    for chunk in response_stream:
-        text = chunk.text
-        if not text: continue
-        buffer += text
-        
-        while True:
-            parts = buffer.split("===ONE_LINE_POINTS===")
-            if len(parts) > 1:
-                detailed_notes += parts[0]
-                if emit_cb: emit_cb({"type": "chunk", "section": "detailed_notes", "text": parts[0]})
-                current_section = "one_line_points"
-                buffer = parts[1]
-                continue
-                
-            parts = buffer.split("===DEFINITIONS===")
-            if len(parts) > 1:
-                if current_section == "detailed_notes": detailed_notes += parts[0]
-                elif current_section == "one_line_points": one_line_points += parts[0]
-                if emit_cb: emit_cb({"type": "chunk", "section": current_section, "text": parts[0]})
-                current_section = "definitions"
-                buffer = parts[1]
-                continue
-                
-            parts = buffer.split("===QUIZ===")
-            if len(parts) > 1:
-                if current_section == "one_line_points": one_line_points += parts[0]
-                elif current_section == "definitions": definitions += parts[0]
-                if emit_cb: emit_cb({"type": "chunk", "section": current_section, "text": parts[0]})
-                current_section = "quiz"
-                buffer = parts[1]
-                continue
-                
-            parts = buffer.split("===FLASHCARDS===")
-            if len(parts) > 1:
-                if current_section == "definitions": definitions += parts[0]
-                elif current_section == "quiz": quiz += parts[0]
-                if emit_cb: emit_cb({"type": "chunk", "section": current_section, "text": parts[0]})
-                current_section = "flashcards"
-                buffer = parts[1]
-                continue
-            break
+    try:
+        max_retries = 3
+        response_stream = None
+        for attempt in range(max_retries):
+            try:
+                response_stream = client.models.generate_content_stream(
+                    model='gemini-2.5-flash',
+                    contents=uploaded_files + [prompt]
+                )
+                break
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt * 5)
+                else:
+                    if emit_cb: emit_cb({"type": "error", "message": f"Gemini Error: {str(e)}"})
+                    return {"error": True}
+                    
+        buffer = ""
+        for chunk in response_stream:
+            text = chunk.text
+            if not text: continue
+            buffer += text
             
-        if len(buffer) > 40:
-            safe_text = buffer[:-30]
-            buffer = buffer[-30:]
+            while True:
+                parts = buffer.split("===ONE_LINE_POINTS===")
+                if len(parts) > 1:
+                    detailed_notes += parts[0]
+                    if emit_cb: emit_cb({"type": "chunk", "section": "detailed_notes", "text": parts[0]})
+                    current_section = "one_line_points"
+                    buffer = parts[1]
+                    continue
+                    
+                parts = buffer.split("===DEFINITIONS===")
+                if len(parts) > 1:
+                    if current_section == "detailed_notes": detailed_notes += parts[0]
+                    elif current_section == "one_line_points": one_line_points += parts[0]
+                    if emit_cb: emit_cb({"type": "chunk", "section": current_section, "text": parts[0]})
+                    current_section = "definitions"
+                    buffer = parts[1]
+                    continue
+                    
+                parts = buffer.split("===QUIZ===")
+                if len(parts) > 1:
+                    if current_section == "one_line_points": one_line_points += parts[0]
+                    elif current_section == "definitions": definitions += parts[0]
+                    if emit_cb: emit_cb({"type": "chunk", "section": current_section, "text": parts[0]})
+                    current_section = "quiz"
+                    buffer = parts[1]
+                    continue
+                    
+                parts = buffer.split("===FLASHCARDS===")
+                if len(parts) > 1:
+                    if current_section == "definitions": definitions += parts[0]
+                    elif current_section == "quiz": quiz += parts[0]
+                    if emit_cb: emit_cb({"type": "chunk", "section": current_section, "text": parts[0]})
+                    current_section = "flashcards"
+                    buffer = parts[1]
+                    continue
+                break
+                
+            if len(buffer) > 40:
+                safe_text = buffer[:-30]
+                buffer = buffer[-30:]
+                if current_section == "detailed_notes": 
+                    detailed_notes += safe_text
+                    if emit_cb: emit_cb({"type": "chunk", "section": "detailed_notes", "text": safe_text})
+                elif current_section == "one_line_points":
+                    one_line_points += safe_text
+                    if emit_cb: emit_cb({"type": "chunk", "section": "one_line_points", "text": safe_text})
+                elif current_section == "definitions":
+                    definitions += safe_text
+                    if emit_cb: emit_cb({"type": "chunk", "section": "definitions", "text": safe_text})
+                elif current_section == "quiz":
+                    quiz += safe_text
+                    if emit_cb: emit_cb({"type": "chunk", "section": "quiz", "text": safe_text})
+                elif current_section == "flashcards":
+                    flashcards_raw += safe_text
+                        
+        if buffer:
+            safe_text = buffer
             if current_section == "detailed_notes": 
                 detailed_notes += safe_text
                 if emit_cb: emit_cb({"type": "chunk", "section": "detailed_notes", "text": safe_text})
@@ -180,23 +198,12 @@ def analyze_video_content(audio_path=None, frame_paths=None, doc_paths=None, foc
                 if emit_cb: emit_cb({"type": "chunk", "section": "quiz", "text": safe_text})
             elif current_section == "flashcards":
                 flashcards_raw += safe_text
-                    
-    if buffer:
-        safe_text = buffer
-        if current_section == "detailed_notes": 
-            detailed_notes += safe_text
-            if emit_cb: emit_cb({"type": "chunk", "section": "detailed_notes", "text": safe_text})
-        elif current_section == "one_line_points":
-            one_line_points += safe_text
-            if emit_cb: emit_cb({"type": "chunk", "section": "one_line_points", "text": safe_text})
-        elif current_section == "definitions":
-            definitions += safe_text
-            if emit_cb: emit_cb({"type": "chunk", "section": "definitions", "text": safe_text})
-        elif current_section == "quiz":
-            quiz += safe_text
-            if emit_cb: emit_cb({"type": "chunk", "section": "quiz", "text": safe_text})
-        elif current_section == "flashcards":
-            flashcards_raw += safe_text
+    finally:
+        for f in uploaded_files:
+            try:
+                client.files.delete(name=f.name)
+            except Exception:
+                pass
 
     flashcards_parsed = []
     if flashcards_raw:

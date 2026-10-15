@@ -36,14 +36,13 @@ def is_safe_url(url: str) -> bool:
     except Exception:
         return False
 
-def scrape_article(url: str) -> DocumentContent | None:
+def scrape_article(url: str) -> list[DocumentContent]:
     """
     Downloads the HTML from a given URL, parses it, and extracts clean text from relevant tags.
-    Returns a DocumentContent representation.
+    Returns a list of DocumentContent representations.
     """
     if not is_safe_url(url):
-        print(f"URL validation failed (potential SSRF or unsupported scheme): {url}")
-        return None
+        raise ValueError("URL not allowed: Private or unsafe URL detected.")
         
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -59,8 +58,7 @@ def scrape_article(url: str) -> DocumentContent | None:
             content += chunk
             if len(content) > MAX_RESPONSE_SIZE:
                 response.close()
-                print(f"Response too large for {url}")
-                return None
+                raise ValueError("Response too large: content exceeds maximum allowed size.")
                 
         soup = BeautifulSoup(content, 'html.parser')
         

@@ -8,6 +8,12 @@ from fastapi.testclient import TestClient
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+try:
+    import chromadb
+except ImportError:
+    mock_chroma = MagicMock()
+    sys.modules['chromadb'] = mock_chroma
+
 from main import app
 from models import DocumentContent
 from rag.chunking import chunk_document
@@ -76,27 +82,29 @@ def test_rag_deletion(mock_get_store):
     mock_store.delete_document.assert_called_with("doc1")
 
 # --- Ask AI Tests ---
-@patch('rag.api.get_store')
-@patch('rag.api.generate_embeddings')
-@patch('rag.api.client')
-def test_ask_ai_supported_question(mock_genai, mock_embed, mock_get_store):
+@patch('rag.retrieval.get_store')
+@patch('rag.retrieval.generate_embeddings')
+@patch('rag.api.genai.Client')
+def test_ask_ai_supported_question(mock_genai_cls, mock_embed, mock_get_store):
     mock_embed.return_value = [[0.1]]
     mock_store = MagicMock()
     mock_get_store.return_value = mock_store
     mock_store.similarity_search.return_value = {
         "ids": [["c1"]], "documents": [["Data"]], "metadatas": [[{"document_name": "Test", "source_type": "pdf"}]], "distances": [[0.1]]
     }
+    mock_client = MagicMock()
+    mock_genai_cls.return_value = mock_client
     mock_response = MagicMock()
     mock_response.text = "Answer"
-    mock_genai.models.generate_content.return_value = mock_response
+    mock_client.models.generate_content.return_value = mock_response
 
     res = client.post("/api/rag/query", json={"question": "Test?"})
     assert res.status_code == 200
     assert res.json()["answer"] == "Answer"
     assert len(res.json()["sources"]) == 1
 
-@patch('rag.api.get_store')
-@patch('rag.api.generate_embeddings')
+@patch('rag.retrieval.get_store')
+@patch('rag.retrieval.generate_embeddings')
 def test_ask_ai_empty_retrieval(mock_embed, mock_get_store):
     mock_embed.return_value = [[0.1]]
     mock_store = MagicMock()
@@ -111,15 +119,17 @@ def test_ask_ai_invalid_document():
     res = client.post("/api/rag/query", json={"question": "What?", "document_ids": "not_an_array"})
     assert res.status_code == 422 
 
-@patch('rag.api.get_store')
-@patch('rag.api.generate_embeddings')
-@patch('rag.api.client')
-def test_ask_ai_gemini_failure(mock_genai, mock_embed, mock_get_store):
+@patch('rag.retrieval.get_store')
+@patch('rag.retrieval.generate_embeddings')
+@patch('rag.api.genai.Client')
+def test_ask_ai_gemini_failure(mock_genai_cls, mock_embed, mock_get_store):
     mock_embed.return_value = [[0.1]]
     mock_get_store.return_value.similarity_search.return_value = {
         "ids": [["c1"]], "documents": [["Data"]], "metadatas": [[{"document_name": "Test"}]], "distances": [[0.1]]
     }
-    mock_genai.models.generate_content.side_effect = Exception("Gemini Down")
+    mock_client = MagicMock()
+    mock_genai_cls.return_value = mock_client
+    mock_client.models.generate_content.side_effect = Exception("Gemini Down")
     
     res = client.post("/api/rag/query", json={"question": "Test?"})
     assert res.status_code == 500
@@ -130,8 +140,8 @@ def test_ask_ai_gemini_failure(mock_genai, mock_embed, mock_get_store):
 def test_security_ssrf(mock_get):
     from services.web_service import scrape_article
     with pytest.raises(Exception) as excinfo:
-        asyncio.run(scrape_article("http://127.0.0.1/admin"))
-    assert "not allowed" in str(excinfo.value) or "Private" in str(excinfo.value)
+        scrape_article("http://127.0.0.1/admin")
+    assert "not allowed" in str(excinfo.value).lower() or "private" in str(excinfo.value).lower()
 
 @patch('services.web_service.requests.get')
 def test_security_oversized_webpage(mock_get):
@@ -140,7 +150,7 @@ def test_security_oversized_webpage(mock_get):
     mock_resp.iter_content.return_value = [b"a" * 1024 * 1024] * 6 # 6MB
     mock_get.return_value = mock_resp
     with pytest.raises(Exception) as excinfo:
-        asyncio.run(scrape_article("http://example.com"))
+        scrape_article("http://example.com")
     assert "exceeds" in str(excinfo.value).lower() or "too large" in str(excinfo.value).lower()
 
 # --- Inputs & Regression Tests ---

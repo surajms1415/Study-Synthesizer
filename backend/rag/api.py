@@ -33,6 +33,7 @@ class RagQueryRequest(BaseModel):
     question: str
     document_ids: Optional[List[str]] = None
     top_k: int = Field(default=5, ge=1, le=20)
+    api_key: Optional[str] = None
 
 class RagSource(BaseModel):
     text: str
@@ -45,9 +46,11 @@ class RagQueryResponse(BaseModel):
 
 @router.post("/query", response_model=RagQueryResponse)
 async def query_rag(req: RagQueryRequest):
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = req.api_key or os.environ.get("GEMINI_API_KEY")
+    if api_key:
+        api_key = api_key.strip()
     if not api_key:
-        raise HTTPException(status_code=500, detail="Server missing GEMINI_API_KEY")
+        raise HTTPException(status_code=400, detail="GEMINI_API_KEY is required. Please set it in Settings or .env file.")
 
     # Construct where filter
     where_filter = None

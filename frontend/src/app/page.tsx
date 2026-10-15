@@ -180,7 +180,11 @@ export default function Home() {
         let errMsg = errText;
         try { 
           const errObj = JSON.parse(errText); 
-          if (errObj.detail) errMsg = errObj.detail;
+          if (errObj.detail) {
+            errMsg = errObj.detail === "Not Found"
+              ? "Backend service error (404 Not Found): The server on port 8000 did not recognize /api/process. Another application may be occupying port 8000. Please ensure the Study Synthesizer backend is running."
+              : errObj.detail;
+          }
         } catch (e) {}
         throw new Error(errMsg);
       }
@@ -263,12 +267,18 @@ export default function Home() {
         body: JSON.stringify({
           question: ragQuestion,
           document_ids: selectedDocId === "all" ? undefined : [selectedDocId],
-          top_k: 5
+          top_k: 5,
+          api_key: userApiKey.trim() || undefined
         }),
       });
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text);
+        let errMsg = text;
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed.detail) errMsg = parsed.detail;
+        } catch(e) {}
+        throw new Error(errMsg);
       }
       const data = await res.json();
       setRagAnswer(data);

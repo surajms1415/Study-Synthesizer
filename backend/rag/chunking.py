@@ -18,8 +18,9 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[st
         start += chunk_size - overlap
     return chunks
 
-def chunk_document(doc: DocumentContent, chunk_size: int = 1000, overlap: int = 200) -> List[Chunk]:
-    text_chunks = chunk_text(doc.text, chunk_size, overlap)
+def chunk_document(doc: DocumentContent, chunk_size: int = 1000, overlap: int = 200, chunk_overlap: int = None) -> List[Chunk]:
+    actual_overlap = chunk_overlap if chunk_overlap is not None else overlap
+    text_chunks = chunk_text(doc.text, chunk_size, actual_overlap)
     result = []
     for i, t in enumerate(text_chunks):
         meta = doc.metadata.copy() if doc.metadata else {}

@@ -65,7 +65,7 @@ async def handle_document_ingestion(docs, task_id) -> list:
             all_content.extend(content_list)
     return all_content
 
-from services.ingestion_service import ingest_youtube_transcript, scrape_article
+from services.ingestion_service import ingest_youtube_transcript
 from models import DocumentContent
 
 async def process_task_pipeline(task_id, temp_video_path, doc_contents: list, web_url, focus_topic, api_key, yt_url=None):
@@ -79,6 +79,7 @@ async def process_task_pipeline(task_id, temp_video_path, doc_contents: list, we
         mark_task_active(task_id)
         audio_path = None
         frame_paths = []
+        doc_paths = []
         transcript_fetched = False
         video_download_failed = False
         all_documents: list[DocumentContent] = list(doc_contents)
